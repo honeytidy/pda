@@ -1,0 +1,1313 @@
+﻿知识库助理 —— 第三方组件许可清单
+================================
+
+本软件随附以下开源组件，各组件版权归其作者所有，按各自许可证分发。
+LGPL 组件（如 PySide6 / Qt）以独立动态库形式提供，未做静态链接，
+你可以用兼容版本替换 _internal 目录下的对应文件。
+嵌入模型 BAAI/bge-small-zh-v1.5 按 MIT 许可分发。
+
+aiobotocore 3.7.0
+  许可证：Apache-2.0
+  主页：https://github.com/aio-libs/aiobotocore
+aiodns 3.6.1
+  许可证：MIT
+  主页：https://github.com/saghul/aiodns
+aiohappyeyeballs 2.6.2
+  许可证：PSF-2.0
+  主页：https://github.com/aio-libs/aiohappyeyeballs
+aiohttp 3.14.1
+  许可证：Apache-2.0 AND MIT
+  主页：https://github.com/aio-libs/aiohttp
+aioitertools 0.12.0
+  许可证：MIT License
+aiosignal 1.4.0
+  许可证：Apache 2.0
+  主页：https://github.com/aio-libs/aiosignal
+alabaster 1.0.0
+  许可证：BSD License
+  主页：https://alabaster.readthedocs.io/
+altair 6.0.0
+  许可证：Copyright (c) 2015-2025, Vega-Altair Developers
+  主页：https://github.com/vega/altair
+altgraph 0.17.5
+  许可证：MIT
+  主页：https://altgraph.readthedocs.io
+anaconda-anon-usage 0.8.1
+  许可证：BSD
+  主页：https://github.com/Anaconda-Platform/anaconda-anon-usage
+anaconda-auth 0.15.1
+  许可证：BSD-3-Clause
+  主页：https://anaconda.com
+anaconda-catalogs 0.2.0
+  许可证：BSD-3-Clause
+anaconda-channel-guide 0.1.1
+  许可证：见项目主页
+anaconda-cli-base 0.9.1
+  许可证：BSD-3-Clause
+anaconda-client 1.14.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/anaconda/anaconda-client
+anaconda-navigator 2.7.1
+  许可证：见项目主页
+anaconda-project 0.13.2
+  许可证：BSD 3-Clause
+  主页：http://github.com/Anaconda-Server/anaconda-project
+annotated-doc 0.0.4
+  许可证：MIT
+  主页：https://github.com/fastapi/annotated-doc
+annotated-types 0.7.0
+  许可证：MIT License
+  主页：https://github.com/annotated-types/annotated-types
+anyio 4.12.1
+  许可证：MIT
+archspec 0.2.6
+  许可证：Apache-2.0 OR MIT
+  主页：https://github.com/archspec/archspec
+argon2-cffi 25.1.0
+  许可证：MIT
+argon2-cffi-bindings 25.1.0
+  许可证：MIT
+arrow 1.4.0
+  许可证：Apache Software License
+  主页：https://github.com/arrow-py/arrow
+asgiref 3.12.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/django/asgiref/
+astroid 4.0.3
+  许可证：LGPL-2.1-or-later
+astropy 8.0.1
+  许可证：BSD-3-Clause
+  主页：https://www.astropy.org/
+astropy-iers-data 0.2026.7.13.0.54.2
+  许可证：BSD-3-Clause
+  主页：https://github.com/astropy/astropy-iers-data
+asttokens 3.0.1
+  许可证：Apache 2.0
+  主页：https://github.com/gristlabs/asttokens
+async-lru 2.3.0
+  许可证：MIT License
+  主页：https://github.com/aio-libs/async-lru
+asyncssh 2.21.1
+  许可证：EPL-2.0 OR GPL-2.0-or-later
+  主页：http://asyncssh.timeheart.net
+attrs 26.1.0
+  许可证：MIT
+autopep8 2.0.4
+  许可证：Expat License
+  主页：https://github.com/hhatto/autopep8
+av 18.1.0
+  许可证：BSD-3-Clause
+  主页：https://pyav.basswood.io
+babel 2.17.0
+  许可证：BSD-3-Clause
+  主页：https://babel.pocoo.org/
+bcrypt 5.0.0
+  许可证：Apache-2.0
+  主页：https://github.com/pyca/bcrypt/
+beautifulsoup4 4.15.0
+  许可证：MIT License
+  主页：https://www.crummy.com/software/BeautifulSoup/bs4/
+binaryornot 0.6.0
+  许可证：MIT
+  主页：https://github.com/binaryornot/binaryornot
+black 26.5.1
+  许可证：MIT
+  主页：https://github.com/psf/black
+bleach 6.4.0
+  许可证：Apache Software License
+  主页：https://github.com/mozilla/bleach
+blinker 1.9.0
+  许可证：MIT License
+  主页：https://github.com/pallets-eco/blinker/
+bokeh 3.9.1
+  许可证：BSD-3-Clause
+  主页：https://bokeh.org
+boltons 25.0.0
+  许可证：BSD License
+  主页：https://github.com/mahmoud/boltons
+botocore 1.43.0
+  许可证：Apache-2.0
+  主页：https://github.com/boto/botocore
+brotlicffi 1.2.0.0
+  许可证：MIT
+  主页：https://github.com/python-hyper/brotlicffi
+build 1.5.1
+  许可证：MIT
+  主页：https://build.pypa.io
+cachetools 6.2.2
+  许可证：MIT
+  主页：https://github.com/tkem/cachetools/
+cattrs 25.3.0
+  许可证：MIT
+  主页：https://catt.rs
+certifi 2026.6.17
+  许可证：MPL-2.0
+  主页：https://github.com/certifi/python-certifi
+cffi 2.1.0
+  许可证：MIT-0
+chardet 5.2.0
+  许可证：LGPL
+  主页：https://github.com/chardet/chardet
+charset-normalizer 3.4.7
+  许可证：MIT
+chromadb 1.5.9
+  许可证：Apache Software License
+  主页：https://github.com/chroma-core/chroma
+click 8.5.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/pallets/click/
+cloudpickle 3.1.2
+  许可证：BSD-3-Clause
+  主页：https://github.com/cloudpipe/cloudpickle
+colorama 0.4.6
+  许可证：BSD-3-Clause
+  主页：https://github.com/tartley/colorama
+colorcet 3.2.1
+  许可证：CC-BY-4.0
+  主页：https://colorcet.holoviz.org
+comm 0.2.3
+  许可证：BSD 3-Clause License
+  主页：https://github.com/ipython/comm
+conda 26.5.3
+  许可证：BSD 3-Clause License
+  主页：https://github.com/conda/conda
+conda-anaconda-telemetry 0.3.0
+  许可证：BSD 3-Clause License
+conda-anaconda-tos 0.2.2
+  许可证：BSD 3-Clause License
+conda-build 26.5.0
+  许可证：BSD 3-Clause License
+  主页：https://github.com/conda/conda-build
+conda-content-trust 0.3.2
+  许可证：BSD License
+  主页：https://github.com/conda/conda-content-trust
+conda-libmamba-solver 26.7.0
+  许可证：BSD 3-Clause License
+  主页：https://github.com/conda/conda-libmamba-solver
+conda-lockfiles 0.2.1
+  许可证：BSD 3-Clause License
+  主页：https://github.com/conda-incubator/conda-lockfiles
+conda-pack 0.9.1
+  许可证：BSD-3-Clause
+  主页：https://conda.github.io/conda-pack/
+conda-package-handling 2.5.0
+  许可证：BSD License
+  主页：https://github.com/conda/conda-package-handling
+conda-pypi 0.11.0
+  许可证：MIT
+  主页：https://github.com/conda/conda-pypi
+conda-rattler-solver 0.1.1
+  许可证：BSD 3-Clause License
+  主页：https://github.com/conda-incubator/conda-rattler-solver
+conda-repo-cli 1.0.173+2.gf8332ec
+  许可证：BSD License
+conda-self 0.2.1
+  许可证：BSD License
+  主页：https://github.com/conda-incubator/conda-self
+conda_index 0.12.1
+  许可证：BSD 3-Clause License
+  主页：https://github.com/conda/conda-index
+conda_package_streaming 0.13.0
+  许可证：BSD License
+  主页：https://github.com/conda/conda-package-streaming
+contourpy 1.3.3
+  许可证：BSD 3-Clause License
+  主页：https://github.com/contourpy/contourpy
+cookiecutter 2.7.1
+  许可证：见项目主页
+  主页：https://github.com/cookiecutter/cookiecutter
+cryptography 49.0.0
+  许可证：Apache-2.0 OR BSD-3-Clause
+  主页：https://github.com/pyca/cryptography
+cssselect 1.3.0
+  许可证：BSD
+  主页：https://github.com/scrapy/cssselect
+ctranslate2 4.8.2
+  许可证：MIT
+  主页：https://opennmt.net
+cycler 0.12.1
+  许可证：Copyright (c) 2015, matplotlib project
+  主页：https://matplotlib.org/cycler/
+dask 2026.7.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/dask/dask/
+datashader 0.19.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/holoviz/datashader
+debugpy 1.8.21
+  许可证：MIT
+  主页：https://aka.ms/debugpy
+decorator 5.3.1
+  许可证：BSD-2-Clause
+defusedxml 0.7.1
+  许可证：PSFL
+  主页：https://github.com/tiran/defusedxml
+diff-match-patch 20200713
+  许可证：Apache
+  主页：https://github.com/diff-match-patch-python/diff-match-patch
+dill 0.4.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/uqfoundation/dill
+distributed 2026.7.1
+  许可证：BSD-3-Clause
+  主页：https://distributed.dask.org
+distro 1.9.0
+  许可证：Apache License, Version 2.0
+  主页：https://github.com/python-distro/distro
+Django 6.1.1
+  许可证：BSD-3-Clause
+  主页：https://www.djangoproject.com/
+docstring-to-markdown 0.17
+  许可证：LGPL-2.1-or-later
+docutils 0.21.2
+  许可证：Public Domain, Python Software Foundation License, BSD License, GNU General Public License (GPL)
+  主页：https://docutils.sourceforge.io
+durationpy 0.11
+  许可证：MIT
+  主页：https://github.com/icholy/durationpy
+edge-tts 7.2.8
+  许可证：GNU Lesser General Public License v3 (LGPLv3)
+  主页：https://github.com/rany2/edge-tts
+entrypoints 0.4
+  许可证：MIT License
+  主页：https://github.com/takluyver/entrypoints
+et_xmlfile 2.0.0
+  许可证：MIT
+  主页：https://foss.heptapod.net/openpyxl/et_xmlfile
+evalidate 2.1.4
+  许可证：MIT License
+  主页：https://github.com/yaroslaff/evalidate
+executing 2.2.1
+  许可证：MIT
+  主页：https://github.com/alexmojaki/executing
+fastapi 0.141.1
+  许可证：MIT
+  主页：https://github.com/fastapi/fastapi
+fastembed 0.8.1
+  许可证：Apache-2.0
+  主页：https://github.com/qdrant/fastembed
+faster-whisper 1.2.1
+  许可证：MIT
+  主页：https://github.com/SYSTRAN/faster-whisper
+fastjsonschema 2.21.2
+  许可证：BSD
+  主页：https://github.com/horejsek/python-fastjsonschema
+filelock 3.29.4
+  许可证：MIT
+  主页：https://github.com/tox-dev/py-filelock
+flake8 7.3.0
+  许可证：MIT
+  主页：https://github.com/pycqa/flake8
+Flask 3.1.3
+  许可证：BSD-3-Clause
+  主页：https://github.com/pallets/flask/
+flatbuffers 25.12.19
+  许可证：Apache 2.0
+  主页：https://google.github.io/flatbuffers/
+fonttools 4.63.0
+  许可证：MIT
+  主页：http://github.com/fonttools/fonttools
+frozendict 2.4.7
+  许可证：LGPL v3
+  主页：https://github.com/Marco-Sulla/python-frozendict
+frozenlist 1.8.0
+  许可证：Apache-2.0
+  主页：https://github.com/aio-libs/frozenlist
+fsspec 2026.4.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/fsspec/filesystem_spec
+gitdb 4.0.12
+  许可证：BSD License
+  主页：https://github.com/gitpython-developers/gitdb
+GitPython 3.1.50
+  许可证：BSD-3-Clause
+  主页：https://github.com/gitpython-developers/GitPython
+gmpy2 2.2.2
+  许可证：LGPL-3.0+
+  主页：https://github.com/gmpy2/gmpy2
+googleapis-common-protos 1.75.3
+  许可证：Apache-2.0
+  主页：https://github.com/googleapis/google-cloud-python/tree/main/packages/googleapis-common-protos
+greenlet 3.3.2
+  许可证：MIT AND PSF-2.0
+  主页：https://greenlet.readthedocs.io
+grpcio 1.84.0
+  许可证：Apache-2.0
+  主页：https://grpc.io
+h11 0.16.0
+  许可证：MIT
+  主页：https://github.com/python-hyper/h11
+h5py 3.16.0
+  许可证：BSD-3-Clause
+  主页：https://www.h5py.org/
+HeapDict 1.0.1
+  许可证：BSD
+  主页：http://stutzbachenterprises.com/
+hf-xet 1.6.0
+  许可证：Apache-2.0
+  主页：https://github.com/huggingface/xet-core
+holoviews 1.23.1
+  许可证：BSD-3-Clause
+  主页：https://holoviews.org
+httpcore 1.0.9
+  许可证：BSD-3-Clause
+  主页：https://www.encode.io/httpcore/
+httpcore2 2.13.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/pydantic/httpx2
+httptools 0.7.1
+  许可证：MIT
+  主页：https://github.com/MagicStack/httptools
+httpx 0.28.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/encode/httpx
+httpx2 2.13.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/pydantic/httpx2
+huggingface_hub 1.32.0
+  许可证：Apache-2.0
+  主页：https://github.com/huggingface/huggingface_hub
+hvplot 0.12.2
+  许可证：BSD
+  主页：https://hvplot.holoviz.org
+idna 3.18
+  许可证：BSD-3-Clause
+  主页：https://github.com/kjd/idna
+ImageIO 2.37.3
+  许可证：BSD-2-Clause
+  主页：https://github.com/imageio/imageio
+imageio-ffmpeg 0.6.0
+  许可证：BSD-2-Clause
+  主页：https://github.com/imageio/imageio-ffmpeg
+imagesize 1.4.1
+  许可证：MIT
+  主页：https://github.com/shibukawa/imagesize_py
+imbalanced-learn 0.14.2
+  许可证：MIT License
+  主页：https://imbalanced-learn.org/
+importlib_metadata 8.7.1
+  许可证：Apache-2.0
+  主页：https://github.com/python/importlib_metadata
+importlib_resources 7.1.0
+  许可证：Apache-2.0
+  主页：https://github.com/python/importlib_resources
+inflection 0.5.1
+  许可证：MIT
+  主页：https://github.com/jpvanhal/inflection
+iniconfig 2.3.0
+  许可证：MIT
+  主页：https://github.com/pytest-dev/iniconfig
+installer 1.0.1
+  许可证：MIT
+intake 2.0.9
+  许可证：MIT
+intervaltree 3.2.1
+  许可证：Apache-2.0
+  主页：https://github.com/chaimleib/intervaltree
+ipykernel 6.31.0
+  许可证：BSD-3-Clause
+  主页：https://ipython.org
+ipympl 0.9.8
+  许可证：Copyright (c) 2016, Matplotlib Contributors
+  主页：http://matplotlib.org/ipympl
+ipython 9.15.0
+  许可证：BSD-3-Clause
+  主页：https://ipython.org
+ipython_pygments_lexers 1.1.1
+  许可证：BSD License
+  主页：https://github.com/ipython/ipython-pygments-lexers
+ipywidgets 8.1.7
+  许可证：BSD 3-Clause License
+  主页：http://jupyter.org
+isort 8.0.1
+  许可证：MIT
+  主页：https://pycqa.github.io/isort/index.html
+itsdangerous 2.2.0
+  许可证：BSD License
+  主页：https://github.com/pallets/itsdangerous/
+jaraco.classes 3.4.0
+  许可证：MIT License
+  主页：https://github.com/jaraco/jaraco.classes
+jaraco.context 6.1.0
+  许可证：MIT
+  主页：https://github.com/jaraco/jaraco.context
+jaraco.functools 4.4.0
+  许可证：MIT
+  主页：https://github.com/jaraco/jaraco.functools
+jedi 0.19.2
+  许可证：MIT
+  主页：https://github.com/davidhalter/jedi
+jellyfish 1.2.1
+  许可证：MIT License
+  主页：https://jellyfish.jpt.sh/
+Jinja2 3.1.6
+  许可证：BSD License
+  主页：https://github.com/pallets/jinja/
+jiter 0.17.0
+  许可证：MIT
+  主页：https://github.com/pydantic/jiter/
+jmespath 1.1.0
+  许可证：MIT
+  主页：https://github.com/jmespath/jmespath.py
+joblib 1.5.3
+  许可证：BSD-3-Clause
+  主页：https://joblib.readthedocs.io
+json5 0.12.1
+  许可证：Files: Everything except for the benchmarks/*.json files.
+  主页：https://github.com/dpranke/pyjson5
+jsonpatch 1.33
+  许可证：Modified BSD License
+  主页：https://github.com/stefankoegl/python-json-patch
+jsonpointer 3.1.1
+  许可证：Modified BSD License
+  主页：https://github.com/stefankoegl/python-json-pointer
+jsonschema 4.25.1
+  许可证：MIT
+  主页：https://github.com/python-jsonschema/jsonschema
+jsonschema-specifications 2025.9.1
+  许可证：MIT
+  主页：https://github.com/python-jsonschema/jsonschema-specifications
+jupyter 1.1.1
+  许可证：BSD
+  主页：https://jupyter.org
+jupyter-console 6.6.3
+  许可证：BSD 3-Clause License
+  主页：https://jupyter.org
+jupyter-events 0.12.1
+  许可证：BSD 3-Clause License
+  主页：http://jupyter.org
+jupyter-lsp 2.3.0
+  许可证：BSD-3-Clause
+jupyter_client 8.9.1
+  许可证：BSD 3-Clause License
+  主页：https://jupyter.org
+jupyter_core 5.9.1
+  许可证：BSD-3-Clause
+  主页：https://jupyter.org
+jupyter_server 2.20.0
+  许可证：BSD 3-Clause License
+  主页：https://jupyter-server.readthedocs.io
+jupyter_server_terminals 0.5.4
+  许可证：BSD 3-Clause License
+  主页：https://jupyter.org
+jupyterlab 4.5.9
+  许可证：Copyright (c) 2015-2025 Project Jupyter Contributors
+  主页：https://jupyter.org
+jupyterlab_pygments 0.3.0
+  许可证：Copyright (c) 2015 Project Jupyter Contributors
+  主页：https://github.com/jupyterlab/jupyterlab_pygments
+jupyterlab_server 2.28.0
+  许可证：Copyright (c) 2015-2017, Project Jupyter Contributors
+  主页：https://jupyterlab-server.readthedocs.io
+jupyterlab_widgets 3.0.16
+  许可证：Copyright (c) 2015 Project Jupyter Contributors
+  主页：https://github.com/jupyter-widgets/ipywidgets
+keyring 25.6.0
+  许可证：MIT License
+  主页：https://github.com/jaraco/keyring
+kiwisolver 1.4.9
+  许可证：=========================
+  主页：https://github.com/nucleic/kiwi
+kubernetes 36.0.3
+  许可证：Apache License Version 2.0
+  主页：https://github.com/kubernetes-client/python
+lazy-loader 0.5
+  许可证：BSD-3-Clause
+  主页：https://scientific-python.org/specs/spec-0001/
+lckr_jupyterlab_variableinspector 3.2.4
+  许可证：BSD 3-Clause License
+  主页：https://github.com/jupyterlab-contrib/jupyterlab-variableInspector
+libarchive-c 5.1
+  许可证：CC0
+  主页：https://github.com/Changaco/python-libarchive-c
+libmambapy 2.3.2
+  许可证：BSD-3-Clause
+librt 0.8.1
+  许可证：MIT
+  主页：https://github.com/mypyc/librt
+lief 0.17.0
+  许可证：Apache License 2.0
+  主页：https://lief-project.github.io/
+linkify-it-py 2.1.0
+  许可证：MIT
+  主页：https://github.com/tsutsu3/linkify-it-py
+llvmlite 0.47.0
+  许可证：BSD-2-Clause AND Apache-2.0 WITH LLVM-exception
+  主页：http://llvmlite.readthedocs.io
+lmdb 1.7.5
+  许可证：OLDAP-2.8
+  主页：http://github.com/jnwatson/py-lmdb/
+locket 1.0.0
+  许可证：BSD-2-Clause
+  主页：http://github.com/mwilliamson/locket.py
+loguru 0.7.3
+  许可证：MIT License
+  主页：https://github.com/Delgan/loguru
+lsprotocol 2025.0.0
+  许可证：MIT License
+  主页：https://github.com/microsoft/lsprotocol
+lxml 6.1.3
+  许可证：BSD-3-Clause
+  主页：https://lxml.de/
+lxml_html_clean 0.4.5
+  许可证：BSD-3-Clause
+  主页：https://github.com/fedora-python/lxml_html_clean/
+lz4 4.4.5
+  许可证：BSD License
+  主页：https://github.com/python-lz4/python-lz4
+Markdown 3.10.2
+  许可证：BSD-3-Clause
+  主页：https://Python-Markdown.github.io/
+markdown-it-py 4.0.0
+  许可证：MIT License
+  主页：https://github.com/executablebooks/markdown-it-py
+MarkupSafe 3.0.3
+  许可证：BSD-3-Clause
+  主页：https://github.com/pallets/markupsafe/
+matplotlib 3.11.0
+  许可证：License agreement for matplotlib versions 1.3.0 and later
+  主页：https://matplotlib.org
+matplotlib-inline 0.2.2
+  许可证：BSD-3-Clause
+  主页：https://github.com/ipython/matplotlib-inline
+mccabe 0.7.0
+  许可证：Expat license
+  主页：https://github.com/pycqa/mccabe
+mdit-py-plugins 0.6.1
+  许可证：MIT License
+  主页：https://github.com/executablebooks/mdit-py-plugins
+mdurl 0.1.2
+  许可证：MIT License
+  主页：https://github.com/executablebooks/mdurl
+menuinst 2.5.2
+  许可证：(c) 2016 Continuum Analytics, Inc. / http://continuum.io
+  主页：https://github.com/conda/menuinst
+mistune 3.3.3
+  许可证：BSD-3-Clause
+  主页：https://github.com/lepture/mistune
+mkl-service 2.7.2
+  许可证：BSD-3-Clause
+  主页：https://github.com/IntelPython/mkl-service
+mkl_fft 2.2.0
+  许可证：BSD-3-Clause
+  主页：http://github.com/IntelPython/mkl_fft
+mkl_random 1.4.1
+  许可证：BSD-3-Clause
+  主页：http://github.com/IntelPython/mkl_random
+mmh3 5.3.0
+  许可证：MIT License
+  主页：https://pypi.org/project/mmh3/
+more-itertools 11.0.2
+  许可证：MIT
+  主页：https://github.com/more-itertools/more-itertools
+mpi4py 4.0.3
+  许可证：BSD-3-Clause
+  主页：https://mpi4py.github.io
+mpmath 1.3.0
+  许可证：BSD
+  主页：http://mpmath.org/
+msgpack 1.2.1
+  许可证：Apache-2.0
+  主页：https://msgpack.org/
+multidict 6.7.1
+  许可证：Apache License 2.0
+  主页：https://github.com/aio-libs/multidict
+multipledispatch 1.0.0
+  许可证：BSD
+  主页：http://github.com/mrocklin/multipledispatch/
+mypy 1.20.2
+  许可证：MIT
+  主页：https://www.mypy-lang.org/
+mypy_extensions 1.1.0
+  许可证：MIT
+  主页：https://github.com/python/mypy_extensions
+narwhals 2.23.0
+  许可证：MIT
+  主页：https://github.com/narwhals-dev/narwhals
+navigator-updater 0.6.0
+  许可证：见项目主页
+nbclient 0.11.0
+  许可证：BSD 3-Clause License
+  主页：https://jupyter.org
+nbconvert 7.17.1
+  许可证：BSD 3-Clause License
+  主页：https://jupyter.org
+nbformat 5.10.4
+  许可证：BSD 3-Clause License
+  主页：https://jupyter.org
+nest-asyncio 1.5.1
+  许可证：BSD
+  主页：https://github.com/erdewit/nest_asyncio
+networkx 3.6.1
+  许可证：BSD-3-Clause
+  主页：https://networkx.org/
+nh3 0.3.6
+  许可证：MIT
+nltk 3.10.0
+  许可证：Apache License, Version 2.0
+  主页：https://www.nltk.org/
+notebook 7.5.7
+  许可证：BSD 3-Clause License
+  主页：https://github.com/jupyter/notebook
+notebook_shim 0.2.4
+  许可证：BSD 3-Clause License
+numba 0.65.1
+  许可证：BSD
+  主页：https://numba.pydata.org
+numexpr 2.14.1
+  许可证：MIT
+  主页：https://github.com/pydata/numexpr
+numpy 2.4.6
+  许可证：BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0
+  主页：https://numpy.org
+numpydoc 1.10.0
+  许可证：Copyright (C) 2008-2023 Stefan van der Walt <stefan@mentat.za.net>, Pauli Virtan
+  主页：https://numpydoc.readthedocs.io
+oauthlib 3.3.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/oauthlib/oauthlib
+olefile 0.47
+  许可证：BSD
+  主页：https://www.decalage.info/python/olefileio
+onnxruntime 1.30.0
+  许可证：MIT License
+  主页：https://onnxruntime.ai
+openai 3.19.2
+  许可证：Apache-2.0
+  主页：https://github.com/openai/openai-python
+opencv-python 5.0.0.93
+  许可证：Apache 2.0
+  主页：https://github.com/opencv/opencv-python
+openpyxl 3.1.5
+  许可证：MIT
+  主页：https://openpyxl.readthedocs.io
+opentelemetry-api 1.44.0
+  许可证：Apache-2.0
+  主页：https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api
+opentelemetry-exporter-otlp-proto-common 1.44.0
+  许可证：Apache-2.0
+  主页：https://github.com/open-telemetry/opentelemetry-python/tree/main/exporter/opentelemetry-exporter-otlp-proto-common
+opentelemetry-exporter-otlp-proto-grpc 1.44.0
+  许可证：Apache-2.0
+  主页：https://github.com/open-telemetry/opentelemetry-python/tree/main/exporter/opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-proto 1.44.0
+  许可证：Apache-2.0
+  主页：https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-proto
+opentelemetry-sdk 1.44.0
+  许可证：Apache-2.0
+  主页：https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-sdk
+opentelemetry-semantic-conventions 0.65b0
+  许可证：Apache-2.0
+  主页：https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-semantic-conventions
+orjson 3.12.0
+  许可证：MPL-2.0 AND (Apache-2.0 OR MIT)
+  主页：https://github.com/ijl/orjson
+overrides 7.7.0
+  许可证：Apache License, Version 2.0
+  主页：https://github.com/mkorpela/overrides
+packaging 26.0
+  许可证：Apache-2.0 OR BSD-2-Clause
+  主页：https://github.com/pypa/packaging
+pandas 3.0.3
+  许可证：BSD 3-Clause License
+  主页：https://pandas.pydata.org
+pandocfilters 1.5.1
+  许可证：BSD-3-Clause
+  主页：http://github.com/jgm/pandocfilters
+panel 1.9.3
+  许可证：BSD
+  主页：https://panel.holoviz.org
+panel-material-ui 0.14.0
+  许可证：BSD
+  主页：https://github.com/panel-extensions/panel-material-ui
+param 2.4.1
+  许可证：BSD-3-Clause
+  主页：https://param.holoviz.org/
+parso 0.8.7
+  许可证：MIT
+  主页：https://github.com/davidhalter/parso
+partd 1.4.2
+  许可证：BSD
+  主页：http://github.com/dask/partd/
+pathspec 1.0.4
+  许可证：Mozilla Public License 2.0 (MPL 2.0)
+patsy 1.0.2
+  许可证：2-clause BSD
+  主页：https://github.com/pydata/patsy
+pefile 2024.8.26
+  许可证：MIT
+  主页：https://github.com/erocarrera/pefile
+pexpect 4.9.0
+  许可证：ISC license
+  主页：https://pexpect.readthedocs.io/
+pickleshare 0.7.5
+  许可证：MIT
+  主页：https://github.com/pickleshare/pickleshare
+pillow 12.3.0
+  许可证：MIT-CMU
+  主页：https://python-pillow.github.io
+pip 26.1.2
+  许可证：MIT
+  主页：https://pip.pypa.io/
+pkce 1.0.3
+  许可证：MIT
+  主页：https://github.com/RomeoDespres/pkce
+pkginfo 1.12.1.2
+  许可证：MIT
+  主页：https://code.launchpad.net/~tseaver/pkginfo/trunk
+platformdirs 4.9.4
+  许可证：MIT
+  主页：https://github.com/tox-dev/platformdirs
+playwright 1.62.0
+  许可证：Apache-2.0
+  主页：https://github.com/Microsoft/playwright-python
+plotly 6.7.0
+  许可证：MIT
+  主页：https://plotly.com/python/
+pluggy 1.6.0
+  许可证：MIT
+prometheus_client 0.24.1
+  许可证：Apache-2.0 AND BSD-2-Clause
+  主页：https://github.com/prometheus/client_python
+prompt_toolkit 3.0.52
+  许可证：BSD License
+  主页：https://github.com/prompt-toolkit/python-prompt-toolkit
+propcache 0.4.1
+  许可证：Apache-2.0
+  主页：https://github.com/aio-libs/propcache
+protobuf 6.33.5
+  许可证：3-Clause BSD License
+  主页：https://developers.google.com/protocol-buffers/
+psutil 7.2.2
+  许可证：BSD-3-Clause
+  主页：https://github.com/giampaolo/psutil
+ptyprocess 0.7.0
+  许可证：ISC License (ISCL)
+  主页：https://github.com/pexpect/ptyprocess
+pure_eval 0.2.3
+  许可证：MIT
+  主页：http://github.com/alexmojaki/pure_eval
+py-cpuinfo 9.0.0
+  许可证：MIT
+  主页：https://github.com/workhorsy/py-cpuinfo
+py-rattler 0.25.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/conda/rattler
+py-rattler-build 0.65.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/prefix-dev/rattler-build
+py_rust_stemmers 0.1.8
+  许可证：见项目主页
+pyarrow 23.0.1
+  许可证：Apache-2.0
+  主页：https://arrow.apache.org/
+pybase64 1.5.0
+  许可证：BSD-2-Clause
+  主页：https://github.com/mayeut/pybase64
+pycares 4.10.0
+  许可证：MIT
+  主页：http://github.com/saghul/pycares
+pyclipper 1.4.0
+  许可证：MIT
+  主页：https://github.com/fonttools/pyclipper
+pycodestyle 2.14.0
+  许可证：MIT
+  主页：https://pycodestyle.pycqa.org/
+pycosat 0.6.6
+  许可证：MIT
+  主页：https://github.com/ContinuumIO/pycosat
+pycparser 3.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/eliben/pycparser
+pyct 0.6.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/holoviz-dev/pyct
+pydantic 2.13.4
+  许可证：MIT
+  主页：https://github.com/pydantic/pydantic
+pydantic-settings 2.14.2
+  许可证：MIT
+  主页：https://github.com/pydantic/pydantic-settings
+pydantic_core 2.46.4
+  许可证：MIT
+  主页：https://github.com/pydantic/pydantic
+pydocstyle 6.3.0
+  许可证：MIT
+  主页：https://www.pydocstyle.org/en/stable/
+pyee 13.0.1
+  许可证：MIT
+  主页：https://github.com/jfhbrook/pyee
+pyerfa 2.0.1.5
+  许可证：BSD 3-Clause License
+  主页：https://github.com/liberfa/pyerfa
+pyflakes 3.4.0
+  许可证：MIT
+  主页：https://github.com/PyCQA/pyflakes
+PyGithub 2.9.1
+  许可证：GNU Library or Lesser General Public License (LGPL)
+  主页：https://github.com/pygithub/pygithub
+Pygments 2.20.0
+  许可证：BSD-2-Clause
+  主页：https://pygments.org
+pyinstaller 6.22.3
+  许可证：GPLv2-or-later with a special exception which allows to use PyInstaller to build
+  主页：https://pyinstaller.org
+pyinstaller-hooks-contrib 2026.7
+  许可证：Apache Software License, GNU General Public License v2 (GPLv2)
+  主页：https://github.com/pyinstaller/pyinstaller-hooks-contrib
+PyJWT 2.13.0
+  许可证：MIT
+  主页：https://github.com/jpadilla/pyjwt
+pylint 4.0.6
+  许可证：GPL-2.0-or-later
+  主页：https://github.com/pylint-dev/pylint
+pylint-venv 3.0.3
+  许可证：MIT
+  主页：https://github.com/jgosmann/pylint-venv/
+pyls-spyder 0.4.0
+  许可证：MIT
+  主页：https://github.com/spyder-ide/pyls-spyder
+pymupdf 1.28.2
+  许可证：Dual Licensed - GNU AFFERO GPL 3.0 or Artifex Commercial License
+  主页：https://github.com/pymupdf/pymupdf
+PyNaCl 1.6.2
+  许可证：Apache-2.0
+  主页：https://github.com/pyca/pynacl/
+pyodbc 5.3.0
+  许可证：MIT
+  主页：https://github.com/mkleehammer/pyodbc
+pyparsing 3.2.5
+  许可证：MIT
+  主页：https://github.com/pyparsing/pyparsing/
+pypdf 6.18.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/py-pdf/pypdf
+PyPika 0.51.1
+  许可证：Apache License Version 2.0
+  主页：https://github.com/kayak/pypika
+pyproject_hooks 1.2.0
+  许可证：MIT License
+  主页：https://github.com/pypa/pyproject-hooks
+PyQt6 6.11.0
+  许可证：GPL-3.0-only
+  主页：https://www.riverbankcomputing.com/software/pyqt/
+PyQt6-WebEngine 6.11.0
+  许可证：GPL-3.0-only
+  主页：https://www.riverbankcomputing.com/software/pyqtwebengine/
+PyQt6_sip 13.11.1
+  许可证：BSD-2-Clause
+  主页：https://github.com/Python-SIP/sip
+PySide6 6.11.0 
+  许可证：见项目主页
+PySocks 1.7.1
+  许可证：BSD
+  主页：https://github.com/Anorov/PySocks
+pytest 9.0.3
+  许可证：MIT
+  主页：https://docs.pytest.org/en/latest/
+python-dateutil 2.9.0.post0
+  许可证：Dual License
+  主页：https://github.com/dateutil/dateutil
+python-docx 1.2.0
+  许可证：MIT
+  主页：https://github.com/python-openxml/python-docx
+python-dotenv 1.2.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/theskumar/python-dotenv
+python-json-logger 4.0.0
+  许可证：BSD-2-Clause License
+  主页：https://nhairs.github.io/python-json-logger
+python-lsp-black 2.0.0
+  许可证：MIT License
+  主页：https://github.com/python-lsp/python-lsp-black
+python-lsp-jsonrpc 1.1.2
+  许可证：MIT
+  主页：https://github.com/python-lsp/python-lsp-jsonrpc
+python-lsp-ruff 2.3.0
+  许可证：MIT
+  主页：https://github.com/python-lsp/python-lsp-ruff
+python-lsp-server 1.14.0
+  许可证：MIT
+  主页：https://github.com/python-lsp/python-lsp-server
+python-multipart 0.0.32
+  许可证：Apache-2.0
+  主页：https://github.com/Kludex/python-multipart
+python-pptx 1.0.2
+  许可证：MIT
+  主页：https://github.com/scanny/python-pptx
+python-slugify 8.0.4
+  许可证：MIT
+  主页：https://github.com/un33k/python-slugify
+pytokens 0.4.1
+  许可证：MIT License
+  主页：https://github.com/tusharsadhwani/pytokens
+pytoolconfig 1.3.1
+  许可证：LGPL-3.0-or-later
+  主页：https://github.com/bageljrkhanofemus/pytoolconfig
+pytz 2026.2
+  许可证：MIT
+  主页：http://pythonhosted.org/pytz
+pyuca 1.2
+  许可证：MIT
+  主页：http://github.com/jtauber/pyuca
+pyviz_comms 3.0.6
+  许可证：BSD 3-Clause License
+  主页：https://github.com/holoviz/pyviz_comms
+PyWavelets 1.9.0
+  许可证：MIT AND BSD-3-Clause
+  主页：https://github.com/PyWavelets/pywt
+pywin32 312
+  许可证：PSF
+  主页：https://github.com/mhammond/pywin32
+pywin32-ctypes 0.2.3
+  许可证：BSD-3-Clause
+  主页：https://github.com/enthought/pywin32-ctypes
+pywinpty 3.0.2
+  许可证：MIT License
+PyYAML 6.0.3
+  许可证：MIT
+  主页：https://pyyaml.org/
+pyzmq 27.1.0
+  许可证：BSD 3-Clause License
+  主页：https://pyzmq.readthedocs.org
+QDarkStyle 3.2.3
+  许可证：MIT
+  主页：https://github.com/ColinDuquesnoy/QDarkStyleSheet
+qstylizer 0.2.4
+  许可证：MIT
+  主页：https://github.com/blambright/qstylizer
+QtAwesome 1.4.2
+  许可证：MIT
+  主页：https://github.com/spyder-ide/qtawesome
+qtconsole 5.7.2
+  许可证：BSD
+  主页：http://jupyter.org
+QtPy 2.4.3
+  许可证：MIT
+  主页：https://github.com/spyder-ide/qtpy
+rapidocr-onnxruntime 1.2.3
+  许可证：Apache-2.0
+  主页：https://github.com/RapidAI/RapidOCR
+readability-lxml 0.9
+  许可证：Apache-2.0
+readchar 4.2.2
+  许可证：MIT Licence
+  主页：https://pypi.org/project/readchar
+referencing 0.37.0
+  许可证：MIT
+  主页：https://github.com/python-jsonschema/referencing
+regex 2026.5.9
+  许可证：Apache-2.0 AND CNRI-Python
+  主页：https://github.com/mrabarnett/mrab-regex
+requests 2.34.2
+  许可证：Apache-2.0
+  主页：https://github.com/psf/requests
+requests-oauthlib 2.0.0
+  许可证：ISC
+  主页：https://github.com/requests/requests-oauthlib
+requests-toolbelt 1.0.0
+  许可证：Apache 2.0
+  主页：https://toolbelt.readthedocs.io/
+rfc3339_validator 0.1.4
+  许可证：MIT license
+  主页：https://github.com/naimetti/rfc3339-validator
+rfc3986_validator 0.1.1
+  许可证：MIT license
+  主页：https://github.com/naimetti/rfc3986-validator
+rich 15.0.0
+  许可证：MIT
+  主页：https://github.com/Textualize/rich
+roman-numerals 3.1.0
+  许可证：Zero-Clause BSD (0BSD), CC0 1.0 Universal (CC0 1.0) Public Domain Dedication
+rope 1.14.0
+  许可证：LGPL-3.0-or-later
+  主页：https://github.com/python-rope/rope
+rpds-py 0.28.0
+  许可证：MIT
+  主页：https://github.com/crate-py/rpds
+rtree 1.4.1
+  许可证：MIT
+  主页：https://github.com/Toblerity/rtree
+ruamel.yaml 0.18.16
+  许可证：MIT license
+  主页：https://sourceforge.net/p/ruamel-yaml/
+ruamel.yaml.clib 0.2.14
+  许可证：MIT
+  主页：https://sourceforge.net/p/ruamel-yaml-clib/
+ruff 0.15.1
+  许可证：MIT License
+  主页：https://docs.astral.sh/ruff
+s3fs 2026.4.0
+  许可证：BSD
+  主页：http://github.com/fsspec/s3fs/
+schedule 1.2.2
+  许可证：MIT License
+  主页：https://github.com/dbader/schedule
+scikit-image 0.26.0
+  许可证：Files: *
+  主页：https://scikit-image.org
+scikit-learn 1.9.0
+  许可证：BSD-3-Clause
+  主页：https://scikit-learn.org
+scipy 1.18.0
+  许可证：Copyright (c) 2001-2002 Enthought, Inc. 2003, SciPy Developers.
+  主页：https://scipy.org/
+seaborn 0.13.2
+  许可证：BSD License
+  主页：https://github.com/mwaskom/seaborn
+semver 3.0.4
+  许可证：Copyright (c) 2013, Konstantine Rybnikov
+Send2Trash 1.8.3
+  许可证：BSD License
+  主页：https://github.com/arsenetar/send2trash
+setuptools 83.0.0
+  许可证：MIT
+  主页：https://github.com/pypa/setuptools
+shapely 2.1.2
+  许可证：BSD 3-Clause
+  主页：https://github.com/shapely/shapely
+shellingham 1.5.4
+  许可证：ISC License
+  主页：https://github.com/sarugaku/shellingham
+shiboken6 6.11.0 
+  许可证：见项目主页
+sip 6.15.1
+  许可证：BSD-2-Clause
+  主页：https://github.com/Python-SIP/sip
+six 1.17.0
+  许可证：MIT
+  主页：https://github.com/benjaminp/six
+sklearn-compat 0.1.6
+  许可证：BSD License
+  主页：https://sklearn-compat.readthedocs.io/en/
+smmap 4.0.0
+  许可证：BSD
+  主页：https://github.com/gitpython-developers/smmap
+sniffio 1.3.1
+  许可证：MIT OR Apache-2.0
+  主页：https://github.com/python-trio/sniffio
+snowballstemmer 3.1.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/snowballstem/snowball
+sortedcontainers 2.4.0
+  许可证：Apache 2.0
+  主页：http://www.grantjenks.com/docs/sortedcontainers/
+soupsieve 2.8.4
+  许可证：MIT
+  主页：https://github.com/facelessuser/soupsieve
+Sphinx 9.1.0
+  许可证：BSD-2-Clause
+  主页：https://www.sphinx-doc.org/
+sphinxcontrib-applehelp 2.0.0
+  许可证：BSD License
+  主页：https://www.sphinx-doc.org/
+sphinxcontrib-devhelp 2.0.0
+  许可证：BSD License
+  主页：https://www.sphinx-doc.org/
+sphinxcontrib-htmlhelp 2.1.0
+  许可证：BSD License
+  主页：https://www.sphinx-doc.org/
+sphinxcontrib-jsmath 1.0.1
+  许可证：BSD
+  主页：http://sphinx-doc.org/
+sphinxcontrib-qthelp 2.0.0
+  许可证：BSD License
+  主页：https://www.sphinx-doc.org/
+sphinxcontrib-serializinghtml 2.0.0
+  许可证：BSD License
+  主页：https://www.sphinx-doc.org/
+spyder 6.1.5
+  许可证：MIT
+  主页：https://www.spyder-ide.org/
+spyder-kernels 3.1.5
+  许可证：MIT
+  主页：https://github.com/spyder-ide/spyder-kernels
+SQLAlchemy 2.0.51
+  许可证：MIT
+  主页：https://www.sqlalchemy.org
+sqlparse 0.6.0
+  许可证：BSD License
+  主页：https://github.com/andialbrecht/sqlparse
+stack_data 0.6.3
+  许可证：MIT
+  主页：http://github.com/alexmojaki/stack_data
+starlette 1.3.1
+  许可证：BSD-3-Clause
+  主页：https://github.com/Kludex/starlette
+statsmodels 0.14.6
+  许可证：BSD License
+  主页：https://www.statsmodels.org/
+streamlit 1.58.0
+  许可证：Apache-2.0
+  主页：https://streamlit.io
+superqt 0.8.1
+  许可证：BSD 3-Clause License
+  主页：https://github.com/pyapp-kit/superqt
+sympy 1.14.0
+  许可证：BSD
+  主页：https://sympy.org
+tables 3.11.1
+  许可证：BSD 3-Clause License
+  主页：http://www.pytables.org
+tabulate 0.10.0
+  许可证：MIT
+  主页：https://github.com/astanin/python-tabulate
+tblib 3.2.2
+  许可证：BSD-2-Clause
+tenacity 9.1.4
+  许可证：Apache 2.0
+  主页：https://github.com/jd/tenacity
+terminado 0.18.1
+  许可证：BSD 2-Clause License
+  主页：https://github.com/jupyter/terminado
+text-unidecode 1.3
+  许可证：Artistic License
+  主页：https://github.com/kmike/text-unidecode/
+textdistance 4.6.3
+  许可证：MIT
+  主页：https://github.com/orsinium/textdistance
+threadpoolctl 3.5.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/joblib/threadpoolctl
+three-merge 0.1.1
+  许可证：MIT
+  主页：https://github.com/spyder-ide/three-merge
+tifffile 2026.6.1
+  许可证：BSD-3-Clause
+  主页：https://www.cgohlke.com
+tinycss2 1.5.1
+  许可证：BSD License
+  主页：https://www.courtbouillon.org/tinycss2
+tokenizers 0.23.2
+  许可证：Apache Software License
+  主页：https://github.com/huggingface/tokenizers
+toml 0.10.2
+  许可证：MIT
+  主页：https://github.com/uiri/toml
+tomli 2.4.0
+  许可证：MIT
+  主页：https://github.com/hukkin/tomli
+tomli_w 1.2.0
+  许可证：MIT License
+  主页：https://github.com/hukkin/tomli-w
+tomlkit 0.15.1
+  许可证：MIT
+  主页：https://github.com/python-poetry/tomlkit
+toolz 1.1.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/pytoolz/toolz
+tornado 6.5.7
+  许可证：Apache-2.0
+  主页：http://www.tornadoweb.org/
+tqdm 4.68.2
+  许可证：MPL-2.0 AND MIT
+  主页：https://tqdm.github.io
+traitlets 5.15.0
+  许可证：BSD 3-Clause License
+  主页：https://github.com/ipython/traitlets
+truststore 0.10.4
+  许可证：MIT
+  主页：https://github.com/sethmlarson/truststore
+typer 0.25.1
+  许可证：MIT
+  主页：https://github.com/fastapi/typer
+typing-inspection 0.4.2
+  许可证：MIT
+  主页：https://github.com/pydantic/typing-inspection
+typing_extensions 4.16.0
+  许可证：PSF-2.0
+  主页：https://github.com/python/typing_extensions
+tzdata 2026.2
+  许可证：Apache-2.0
+  主页：https://github.com/python/tzdata
+uc-micro-py 2.0.0
+  许可证：MIT
+  主页：https://github.com/tsutsu3/uc.micro-py
+ujson 5.13.0
+  许可证：BSD-3-Clause AND TCL
+  主页：https://github.com/ultrajson/ultrajson
+unearth 0.18.2
+  许可证：MIT
+  主页：https://github.com/frostming/unearth
+urllib3 2.7.0
+  许可证：MIT
+uvicorn 0.40.0
+  许可证：BSD-3-Clause
+  主页：https://uvicorn.dev/
+watchdog 6.0.0
+  许可证：Apache-2.0
+  主页：https://github.com/gorakhargosh/watchdog
+watchfiles 1.3.0
+  许可证：MIT
+  主页：https://github.com/samuelcolvin/watchfiles
+wcwidth 0.8.2
+  许可证：MIT
+  主页：https://github.com/jquast/wcwidth
+webencodings 0.5.1
+  许可证：BSD
+  主页：https://github.com/SimonSapin/python-webencodings
+websocket-client 1.8.0
+  许可证：Apache-2.0
+  主页：https://github.com/websocket-client/websocket-client.git
+websockets 16.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/python-websockets/websockets
+Werkzeug 3.1.6
+  许可证：BSD-3-Clause
+  主页：https://github.com/pallets/werkzeug/
+whatthepatch 1.0.7
+  许可证：MIT License
+  主页：https://github.com/cscorley/whatthepatch
+wheel 0.47.0
+  许可证：MIT
+  主页：https://github.com/pypa/wheel
+widgetsnbextension 4.0.14
+  许可证：BSD 3-Clause License
+  主页：http://jupyter.org
+win32_setctime 1.2.0
+  许可证：MIT license
+  主页：https://github.com/Delgan/win32-setctime
+win_inet_pton 1.1.0
+  许可证：This software released into the public domain. Anyone is free to copy,
+  主页：https://github.com/hickeroar/win_inet_pton
+winloop 0.6.3
+  许可证：MIT License
+wrapt 2.2.1
+  许可证：BSD-2-Clause
+  主页：https://github.com/GrahamDumpleton/wrapt
+xarray 2026.7.0
+  许可证：Apache-2.0
+  主页：https://xarray.dev/
+xlrd 2.0.2
+  许可证：BSD
+  主页：http://www.python-excel.org/
+xlsxwriter 3.2.9
+  许可证：BSD-2-Clause
+  主页：https://github.com/jmcnamara/XlsxWriter
+xlutils 2.0.0
+  许可证：MIT
+  主页：http://www.python-excel.org
+xlwings 0.36.0
+  许可证：BSD 3-clause
+  主页：https://www.xlwings.org
+xlwt 1.3.0
+  许可证：BSD
+  主页：http://www.python-excel.org/
+xyzservices 2026.3.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/geopandas/xyzservices
+yapf 0.43.0
+  许可证：Apache License
+  主页：https://github.com/google/yapf
+yarl 1.24.2
+  许可证：Apache-2.0
+  主页：https://github.com/aio-libs/yarl
+zict 3.0.0
+  许可证：BSD
+  主页：http://zict.readthedocs.io/en/latest/
+zipp 3.23.0
+  许可证：MIT
+  主页：https://github.com/jaraco/zipp
+zstandard 0.25.0
+  许可证：BSD-3-Clause
+  主页：https://github.com/indygreg/python-zstandard

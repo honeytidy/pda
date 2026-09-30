@@ -1,0 +1,72 @@
+# -*- mode: python ; coding: utf-8 -*-
+# ============================================================================
+# 本文件是 scripts/build_exe.py 调 PyInstaller CLI 生成的 spec 的参考快照，勿直接使用。
+# build_exe.py 现在把生成的 spec 写到 build/pda.spec（--specpath build），不再覆盖本文件；
+# 它还负责 build_deps 的 PYTHONPATH、data/ 备份恢复与启动器编译，直接 `pyinstaller pda.spec` 都不会做。
+# 正确用法：python scripts/build_exe.py
+# ============================================================================
+import os
+import sys
+
+from PyInstaller.utils.hooks import collect_all
+
+datas = []
+# anaconda Library\bin 里 Python 扩展依赖的 DLL（原为 D:/soft/anaconda3 绝对路径，改为按解释器计算）
+_conda_bin = os.path.join(sys.base_prefix, 'Library', 'bin')
+binaries = [
+    (os.path.join(_conda_bin, _dll), '.')
+    for _dll in ('libssl-3-x64.dll', 'libcrypto-3-x64.dll', 'ffi.dll', 'liblzma.dll',
+                 'sqlite3.dll', 'libexpat.dll', 'zlib.dll', 'bz2.dll')
+    if os.path.isfile(os.path.join(_conda_bin, _dll))
+]
+hiddenimports = ['pypdf', 'docx', 'openpyxl', 'pptx', 'fastembed', 'onnxruntime', 'rapidocr_onnxruntime', 'cv2', 'watchdog', 'readability', 'lxml', 'win32com', 'pythoncom', 'requests']
+tmp_ret = collect_all('rapidocr_onnxruntime')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('fastembed')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+tmp_ret = collect_all('chromadb')
+datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+
+
+a = Analysis(
+    ['run.py'],
+    pathex=[],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=['PyQt6', 'PyQt5', 'PySide2', 'tkinter', 'fsspec.gui', 'panel', 'nbconvert', 'playwright', 'chromadb.test', 'kubernetes', 'uvicorn', 'fastapi', 'starlette', 'watchfiles', 'websockets', 'httptools', 'typer', 'botocore', 'aiobotocore', 'boto3', 's3fs', 'pytest', 'sphinx', 'jedi', 'black', 'yapf', 'nbformat', 'IPython', 'matplotlib', 'scipy', 'pandas', 'notebook', 'docutils', 'dask', 'distributed', 'xarray', 'numba', 'sympy', 'bokeh', 'holoviews', 'sklearn', 'statsmodels', 'seaborn', 'h5py', 'mpi4py', 'intake', 'hvplot', 'datashader', 'altair', 'ipywidgets', 'pyarrow', 'mypy', 'skimage', 'pywt', 'networkx', 'nbclient', 'bleach', 'jupyter_server', 'ipympl', 'colorcet', 'flask', 'asyncssh', 'zict', 'lmdb', 'narwhals'],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name='pda',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=['src/pda.ico'],
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='pda',
+)

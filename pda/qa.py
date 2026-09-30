@@ -1,0 +1,162 @@
+# -*- coding: utf-8 -*-
+"""问答：向量检索 + FTS5 关键词检索混合，拼 prompt 调 LLM 生成带引用的中文答案。
+
+V1.2：限定范围提问——"在XX里/只看XX"之类限定词先按文档标题/标签模糊匹配
+过滤候选文档再检索；匹配不到则全库检索并在答案中提示。
+"""
+import re
+
+from . import db, embeddings, llm, vectorstore
+
+_SYSTEM_PROMPT = (
+    "你是用户的个人知识库助理。根据下面给出的资料片段回答用户的问题。\n"
+    "要求：\n"
+    "1. 用中文简洁回答；\n"
+    "2. 回答中引用资料时用 [1]、[2] 这样的编号标注出处；\n"
+    "3. 资料中没有的信息不要编造，直接说明资料中未提及。"
+)
+
+# 限定词模式："在XX里/中/内"、"只看XX"、"《XX》"
+# 普通英文/中文引号不再当限定词（问题里引用一个词很常见，会误把检索范围缩小）
+# "在" 前面不能紧挨着能与它组词的字（现在/存在/正在/实在/所在…），否则
+# "现在公司里有多少人"会被误判为限定在"公司"
+_ZAI = r"(?<![现存正实所自好健潜内外处旨志意还])在"
+_SCOPE_PATTERNS = [
+    re.compile(_ZAI + r"[《「『]?([^，。,.？?！!《》「」『』\s]{2,20}?)[》」』]?(?:里|中|内)"),
+    re.compile(r"只看[《「『]?([^，。,.？?！!《》「」『』\s]{2,20}?)[》」』]?(?:[，。,.？?！!\s]|$)"),
+    re.compile(r"[《「『]([^《》「」『』]{1,20}?)[》」』]"),
+]
+
+# 泛指词不是限定范围（"在这个过程中"、"在其中"、"在资料里"）
+_SCOPE_STOPWORDS = {
+    "过程", "这个过程", "此过程", "其中", "这里", "那里", "哪里", "这个", "那个",
+    "这些", "那些", "资料", "文档", "文件", "知识库", "全部", "所有", "我的资料",
+    "我的文档", "工作", "生活", "实际", "现实", "心里", "脑子", "家里", "实践",
+    "工作中", "日常", "平时", "网上", "路上",
+}
+# "在…中/里"里以这些词开头的多为泛指（"在这次会议中"除外的指代性短语）
+_SCOPE_GENERIC_PREFIX = ("这", "那", "其", "此", "该", "哪")
+
+# 限定范围内命中少于该数时，补充全库结果（限定词可能误判，或范围内资料不全）
+_SCOPE_MIN_HITS = 3
+
+
+def parse_scope(query: str) -> str | None:
+    """提取限定范围词（如"会议纪要"），提取不到返回 None。"""
+    for i, pattern in enumerate(_SCOPE_PATTERNS):
+        for m in pattern.finditer(query):
+            term = m.group(1).strip()
+            if not term or term in _SCOPE_STOPWORDS:
+                continue
+            if i == 0 and term.startswith(_SCOPE_GENERIC_PREFIX):
+                continue  # "在这个项目中"：指代词，不是文档名
+            return term
+    return None
+
+
+def retrieve(query: str, vec_top: int = 8, fts_top: int = 5,
+             doc_ids: list | None = None) -> list:
+    """混合检索：向量 top8 + FTS top5，按 chunk_id 合并去重（向量结果优先）。
+
+    doc_ids 不为 None 时只在指定文档范围内检索。
+    """
+    query_vec = embeddings.embed([query])[0]
+    vec_hits = vectorstore.search(query_vec, top_k=vec_top, doc_ids=doc_ids)
+
+    fts_hits = []
+    try:
+        # 限定范围时多取一些再过滤
+        fts_hits = db.fts_search(query, top_k=fts_top * 3 if doc_ids else fts_top)
+    except Exception:
+        fts_hits = []  # FTS 语法错误等失败时跳过，只靠向量结果
+    if doc_ids is not None:
+        allowed = set(doc_ids)
+        fts_hits = [h for h in fts_hits if h.get("doc_id") in allowed][:fts_top]
+
+    merged = []
+    seen = set()
+    for hit in vec_hits + fts_hits:
+        cid = hit.get("chunk_id") or hit.get("id")
+        if cid in seen:
+            continue
+        seen.add(cid)
+        merged.append(hit)
+    return merged
+
+
+def answer(query: str) -> dict:
+    """返回 {answer, sources, markdown}；sources 为 [{index, title, file_path, snippet}]。
+
+    markdown=True 仅当答案来自 LLM：检索兜底展示的是文档原文片段，里面的 * # 等
+    不是 Markdown，按纯文本显示。
+    """
+    # 限定范围提问：标题/标签模糊匹配候选文档
+    scope_note = ""
+    doc_ids = None
+    term = parse_scope(query)
+    if term:
+        docs = db.find_documents_by_term(term)
+        if docs:
+            doc_ids = [d["id"] for d in docs]
+            scope_note = f"（已限定在匹配「{term}」的 {len(docs)} 个文档内检索）\n\n"
+        else:
+            scope_note = f"（未找到匹配「{term}」的文档，已全库检索）\n\n"
+
+    hits = retrieve(query, doc_ids=doc_ids)
+    if doc_ids is not None and not hits:
+        # 限定范围内一无所获（多半是误判了限定词）：退回全库
+        hits = retrieve(query)
+        scope_note = f"（「{term}」范围内没有相关内容，已全库检索）\n\n"
+    elif doc_ids is not None and len(hits) < _SCOPE_MIN_HITS:
+        # 范围内结果很少：限定结果排前面，再补充全库结果，避免误判时漏掉真正相关的文档
+        seen = {h.get("chunk_id") or h.get("id") for h in hits}
+        extra = [h for h in retrieve(query)
+                 if (h.get("chunk_id") or h.get("id")) not in seen]
+        if extra:
+            hits = hits + extra[:max(0, 8 - len(hits))]
+            scope_note = (f"（匹配「{term}」的文档内相关内容较少，"
+                          "已优先列出并补充全库结果）\n\n")
+    sources = [
+        {
+            "index": i + 1,
+            "title": h.get("title", ""),
+            "file_path": h.get("file_path", ""),
+            "snippet": (h.get("text", "") or "").replace("\n", " ")[:100],
+            "text": h.get("text", ""),
+        }
+        for i, h in enumerate(hits)
+    ]
+
+    if not hits:
+        return {
+            "answer": scope_note + "知识库中没有检索到相关内容。请先把相关文档拖进窗口收录。",
+            "sources": [],
+        }
+
+    if not llm.has_llm():
+        lines = [
+            "未配置 API Key，无法生成智能回答。以下是检索到的相关资料片段：",
+            "",
+        ]
+        for s in sources:
+            lines.append(f"[{s['index']}] {s['title']}：{s['text'][:200]}")
+        return {"answer": scope_note + "\n".join(lines), "sources": sources}
+
+    context = "\n\n".join(
+        f"[{s['index']}]（来源：{s['title']}）\n{s['text']}" for s in sources
+    )
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"资料片段：\n{context}\n\n用户问题：{query}",
+        },
+    ]
+    try:
+        text = llm.chat(messages)
+    except Exception as e:
+        text = f"调用 LLM 失败：{e}\n\n以下是检索到的相关资料片段：\n" + "\n".join(
+            f"[{s['index']}] {s['title']}：{s['text'][:200]}" for s in sources
+        )
+        return {"answer": scope_note + text, "sources": sources}
+    return {"answer": scope_note + text, "sources": sources, "markdown": True}

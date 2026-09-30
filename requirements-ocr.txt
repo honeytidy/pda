@@ -1,0 +1,5 @@
+# 可选：图片 OCR（装不上则图片格式不可用，其余功能不受影响）
+rapidocr-onnxruntime==1.2.3
+# 注意：rapidocr-onnxruntime 会拉 opencv-python（带 GUI 的完整版）。打包时 build_deps/ 用的是
+# opencv-python-headless，两者同时装会冲突；装完 OCR 后如需瘦身可 pip uninstall opencv-python
+# 并改装 opencv-python-headless（版本与 build_deps 一致）。

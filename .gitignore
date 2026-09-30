@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 构建产物
+build/
+build_deps/
+dist/
+**/bin/
+**/obj/
+*.pdb
+
+
+# 用户数据 / 本地配置（可能含 API key）/ 日志
+data/
+pda_config.json
+*.log
+
+# 预览截图（scripts/ui_preview.py 等生成）
+scripts/*.png
