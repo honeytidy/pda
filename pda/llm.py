@@ -23,22 +23,31 @@ def has_llm() -> bool:
 # ---------- 服务商预设：用户只填 Key，接口地址与模型自动确定 ----------
 # models 是偏好顺序：验证时从该服务商 /models 返回的列表里挑第一个存在的（模型会上下架，
 # 不硬编码单一名字）；/models 不可用时用第一个。
+# key_url：该服务商创建/查看 API Key 的控制台页面（设置界面"获取 API Key"按钮打开）
 PROVIDERS = [
     {"id": "moonshot", "name": "Kimi（月之暗面）", "base_url": "https://api.moonshot.cn/v1",
+     "key_url": "https://platform.kimi.com/console/api-keys",
      "models": ["kimi-k2-0905-preview", "kimi-k2-turbo-preview", "kimi-latest", "moonshot-v1-32k", "moonshot-v1-8k"]},
     {"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1",
+     "key_url": "https://platform.deepseek.com/api_keys",
      "models": ["deepseek-chat"]},
     {"id": "dashscope", "name": "通义千问（阿里云百炼）", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+     "key_url": "https://bailian.console.aliyun.com/?tab=model#/api-key",
      "models": ["qwen-plus", "qwen-turbo", "qwen-max"]},
     {"id": "zhipu", "name": "智谱 GLM", "base_url": "https://open.bigmodel.cn/api/paas/v4",
+     "key_url": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
      "models": ["glm-4-flash", "glm-4-plus", "glm-4"]},
     {"id": "siliconflow", "name": "硅基流动", "base_url": "https://api.siliconflow.cn/v1",
+     "key_url": "https://cloud.siliconflow.cn/account/ak",
      "models": ["deepseek-ai/DeepSeek-V3", "Qwen/Qwen2.5-72B-Instruct", "Qwen/Qwen2.5-7B-Instruct"]},
     {"id": "openai", "name": "OpenAI", "base_url": "https://api.openai.com/v1",
+     "key_url": "https://platform.openai.com/api-keys",
      "models": ["gpt-5-mini", "gpt-4.1-mini", "gpt-4o-mini"]},
     {"id": "openrouter", "name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1",
+     "key_url": "https://openrouter.ai/settings/keys",
      "models": ["deepseek/deepseek-chat", "openai/gpt-4o-mini"]},
     {"id": "anthropic", "name": "Anthropic Claude", "base_url": "https://api.anthropic.com/v1",
+     "key_url": "https://console.anthropic.com/settings/keys",
      "models": ["claude-haiku-4-5", "claude-sonnet-5"]},
 ]
 CUSTOM_PROVIDER = "custom"

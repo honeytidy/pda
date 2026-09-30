@@ -28,10 +28,10 @@ CODE_BG = "#F3F4F6"
 QUOTE_COLOR = "#646A73"
 TABLE_BORDER = "#D0D3D9"
 TABLE_HEADER_BG = "#F5F6F8"
-CODE_FONTS = ["Consolas", "Microsoft YaHei UI"]
+CODE_FONTS = ["Consolas", "Microsoft YaHei UI"]  # 与 theme.MONO_FAMILIES 一致
 
-# 标题字号（px），正文 15px
-_HEADING_PX = {1: 20, 2: 18, 3: 16}
+# 标题字号（px），正文 14px
+_HEADING_PX = {1: 19, 2: 17, 3: 15}
 _LINK_SCHEMES = ("http://", "https://")
 _FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 _TABLE_ROW = re.compile(r"^\s*\|")
@@ -81,7 +81,7 @@ def _style_tables(frame):
         _style_tables(child)
 
 
-def render(text: str, font_px: int = 15, link_color: str = "#3B6EF6") -> tuple:
+def render(text: str, font_px: int = 14, link_color: str = "#3B6EF6") -> tuple:
     """返回 (html, natural_width)。natural_width 为不换行时的内容宽度（px），供气泡定宽。"""
     doc = QTextDocument()
     font = QFont()
@@ -145,7 +145,7 @@ def render(text: str, font_px: int = 15, link_color: str = "#3B6EF6") -> tuple:
             ncf = QTextCharFormat(cf)
             if level:
                 ncf.clearProperty(QTextFormat.FontSizeAdjustment)
-                ncf.setFontWeight(QFont.Bold)
+                ncf.setFontWeight(QFont.DemiBold)
                 f = ncf.font()
                 f.setPixelSize(_HEADING_PX.get(level, font_px))
                 ncf.setFont(f, QTextCharFormat.FontPropertiesSpecifiedOnly)

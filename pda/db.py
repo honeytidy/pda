@@ -139,6 +139,14 @@ def find_document_by_source(source_path: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_document(doc_id: int) -> dict | None:
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT id, title, file_path, source_path FROM documents WHERE id = ?", (doc_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def delete_document(doc_id: int) -> str | None:
     """删除文档及其全部 chunks 与 FTS 索引，返回归档文件路径（调用方负责删文件）。"""
     with connect() as conn:

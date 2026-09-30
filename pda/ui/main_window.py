@@ -8,7 +8,7 @@ import os
 import time
 
 from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QCursor, QDesktopServices, QFontMetrics
+from PySide6.QtGui import QCursor, QDesktopServices, QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QHBoxLayout,
+    QKeySequenceEdit,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -38,7 +39,7 @@ from PySide6.QtWidgets import (
 
 from .. import config, db, embeddings, hotkey, ingest, ipc, llm, qa, web
 from ..watcher import FolderWatcher
-from . import markdown
+from . import markdown, theme
 from .toast import show_progress, show_toast
 
 ACCENT = "#3B6EF6"
@@ -90,7 +91,7 @@ QFrame#userBubble {{
 }}
 QFrame#userBubble QLabel {{
     color: #FFFFFF;
-    font-size: 15px;
+    font-size: 14px;
     background: transparent;
 }}
 QFrame#assistantBubble {{
@@ -100,7 +101,7 @@ QFrame#assistantBubble {{
 }}
 QFrame#assistantBubble QLabel {{
     color: {TEXT};
-    font-size: 15px;
+    font-size: 14px;
     background: transparent;
 }}
 QFrame#assistantBubble QLabel.sourceLink {{
@@ -120,8 +121,8 @@ QWidget#welcomePanel {{
 }}
 QLabel#welcomeTitle {{
     color: {TEXT};
-    font-size: 21px;
-    font-weight: bold;
+    font-size: 22px;
+    font-weight: 600;
     background: transparent;
 }}
 QLabel#welcomeSubtitle {{
@@ -139,14 +140,40 @@ QFrame#hintCard[hover="true"] {{
 }}
 QLabel#hintCardTitle {{
     color: {TEXT};
-    font-size: 14px;
-    font-weight: bold;
+    font-size: 15px;
+    font-weight: 600;
     background: transparent;
 }}
 QLabel#hintCardDesc {{
     color: {SUBTLE};
     font-size: 12px;
     background: transparent;
+}}
+QFrame#hotkeyStrip {{
+    background: #FFFFFF;
+    border: 1px solid {BORDER};
+    border-radius: 8px;
+}}
+QLabel#hotkeyStripTitle {{
+    color: {TEXT};
+    font-size: 13px;
+    font-weight: 600;
+    background: transparent;
+}}
+QLabel#hotkeyStripText {{
+    font-size: 13px;
+    background: transparent;
+}}
+QPushButton#linkButton {{
+    background: transparent;
+    border: none;
+    color: {ACCENT};
+    font-size: 13px;
+    padding: 2px 4px;
+}}
+QPushButton#linkButton:hover {{
+    color: {ACCENT_DARK};
+    text-decoration: underline;
 }}
 /* ---------- 输入区 ---------- */
 QFrame#inputCard {{
@@ -160,7 +187,7 @@ QFrame#inputCard[focused="true"] {{
 QPlainTextEdit#chatInput {{
     border: none;
     background: transparent;
-    font-size: 15px;
+    font-size: 14px;
     color: {TEXT};
     padding: 4px;
 }}
@@ -185,7 +212,7 @@ QWidget#sidebar {{
 QLabel#sidebarTitle {{
     color: {SUBTLE};
     font-size: 12px;
-    font-weight: bold;
+    font-weight: 600;
 }}
 QListWidget#docList {{
     border: none;
@@ -224,7 +251,7 @@ QWidget#dropOverlay {{
 QLabel#dropOverlayText {{
     color: {ACCENT};
     font-size: 20px;
-    font-weight: bold;
+    font-weight: 600;
     background: transparent;
 }}
 /* ---------- 侧栏设置按钮 ---------- */
@@ -267,6 +294,28 @@ QDialog QPushButton#primaryButton {{
 QDialog QPushButton#primaryButton:hover {{
     background: {ACCENT_DARK};
 }}
+QDialog QLabel#dialogTip {{
+    color: {TEXT};
+    font-size: 13px;
+}}
+QDialog QLabel#dialogStatus {{
+    font-size: 12px;
+}}
+QKeySequenceEdit QLineEdit, QDialog QLineEdit, QDialog QComboBox {{
+    background: #FFFFFF;
+    border: 1px solid {BORDER};
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 13px;
+    color: {TEXT};
+    min-height: 20px;
+}}
+QKeySequenceEdit QLineEdit:focus, QDialog QLineEdit:focus, QDialog QComboBox:focus {{
+    border: 1px solid {ACCENT};
+}}
+QDialog QLabel {{
+    font-size: 13px;
+}}
 /* ---------- 状态栏 ---------- */
 QStatusBar {{
     background: {BG};
@@ -287,11 +336,20 @@ def escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def clipboard_files(mime) -> list:
+    """剪贴板/拖放数据里的本地文件路径（资源管理器复制的文件）。"""
+    if mime is None or not mime.hasUrls():
+        return []
+    return [u.toLocalFile() for u in mime.urls() if u.isLocalFile() and u.toLocalFile()]
+
+
 class InputEdit(QPlainTextEdit):
     """多行输入框：回车发送，Shift+Enter 换行；向外抛出焦点变化。"""
 
     submitted = Signal()
     focus_changed = Signal(bool)
+    # 粘贴/拖入的是文件或纯图片（截图）：交给主窗口收录，不插入输入框
+    ingest_requested = Signal(object)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter) and not (
@@ -300,6 +358,13 @@ class InputEdit(QPlainTextEdit):
             self.submitted.emit()
             return
         super().keyPressEvent(event)
+
+    def insertFromMimeData(self, source):
+        # 文字照常粘贴（用户在输入问题）；文件、截图这类不可能是问题的内容直接收录
+        if clipboard_files(source) or (source.hasImage() and not source.text().strip()):
+            self.ingest_requested.emit(source)
+            return
+        super().insertFromMimeData(source)
 
     def focusInEvent(self, event):
         self.focus_changed.emit(True)
@@ -468,6 +533,22 @@ class IngestWorker(QThread):
         self.finished_all.emit(results)
 
 
+class RemoveWorker(QThread):
+    """后台删除文档（向量库删除在大库上要几十到几百毫秒，不放 GUI 线程）。"""
+
+    done = Signal(bool, str)  # (成功, 失败原因)
+
+    def __init__(self, doc_id, parent=None):
+        super().__init__(parent)
+        self.doc_id = doc_id
+
+    def run(self):
+        try:
+            self.done.emit(ingest.remove_document(self.doc_id), "")
+        except Exception as e:
+            self.done.emit(False, f"{type(e).__name__}: {e}")
+
+
 class AskWorker(QThread):
     done = Signal(dict)
 
@@ -607,9 +688,6 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(8)
         self.input = InputEdit()
         self.input.setObjectName("chatInput")
-        self.input.setPlaceholderText(
-            "输入问题，回车发送；拖入文档收录；Ctrl+Shift+A 收选中项，Ctrl+Shift+Q 存剪贴板"
-        )
         # QPlainTextEdit 的 sizeHint 高约 6-7 行，不能交给布局决定高度；
         # 按文档行数动态定高：默认 1 行（卡片约 56px），随内容长高，上限 140px
         self.input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -642,12 +720,17 @@ class MainWindow(QMainWindow):
         self.doc_list.setFrameShape(QFrame.NoFrame)
         self.doc_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
         self.doc_list.itemDoubleClicked.connect(self._on_doc_double_clicked)
+        self.doc_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.doc_list.customContextMenuRequested.connect(self._on_doc_context_menu)
+        del_sc = QShortcut(QKeySequence.Delete, self.doc_list)
+        del_sc.setContext(Qt.WidgetShortcut)
+        del_sc.activated.connect(lambda: self._confirm_remove(self.doc_list.currentItem()))
         side_layout.addWidget(self.doc_list, stretch=1)
         self.empty_hint = QLabel("还没有收录文档\n拖文件进来试试")
         self.empty_hint.setObjectName("emptyHint")
         self.empty_hint.setAlignment(Qt.AlignCenter)
         side_layout.addWidget(self.empty_hint, stretch=1)
-        hint = QLabel("双击打开原文件")
+        hint = QLabel("双击打开 · 右键可移除")
         hint.setStyleSheet(f"color: {SUBTLE}; font-size: 12px; background: transparent;")
         hint.setAlignment(Qt.AlignCenter)
         side_layout.addWidget(hint)
@@ -655,7 +738,17 @@ class MainWindow(QMainWindow):
         self.settings_btn.setObjectName("settingsButton")
         self.settings_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.settings_btn.clicked.connect(self._open_watch_settings)
-        side_layout.addWidget(self.settings_btn)
+        self.hotkeys_btn = QPushButton("快捷键")
+        self.hotkeys_btn.setObjectName("settingsButton")
+        self.hotkeys_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.hotkeys_btn.clicked.connect(self._open_hotkey_settings)
+        footer = QHBoxLayout()
+        footer.setSpacing(4)
+        footer.addStretch(1)
+        footer.addWidget(self.settings_btn)
+        footer.addWidget(self.hotkeys_btn)
+        footer.addStretch(1)
+        side_layout.addLayout(footer)
         splitter.addWidget(side_widget)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
@@ -665,9 +758,12 @@ class MainWindow(QMainWindow):
         # 拖放遮罩（顶层子控件，随窗口 resize）
         self.overlay = DropOverlay(self)
 
-        self.statusBar().showMessage(
-            "就绪（拖入文件或文件夹即可收录；Ctrl+Shift+Q 保存剪贴板）"
-        )
+        # 输入框有焦点时 Ctrl+V 由输入框自己处理（文字进输入框，文件/截图收录）；
+        # 焦点在窗口其他地方（聊天区、侧栏）时，剪贴板里的任何内容都收录
+        paste_sc = QShortcut(QKeySequence.Paste, self)
+        paste_sc.setContext(Qt.WindowShortcut)
+        paste_sc.activated.connect(lambda: self._ingest_clipboard(QApplication.clipboard().mimeData()))
+        self.input.ingest_requested.connect(self._ingest_clipboard)
         self._refresh_doc_list()
 
         # V1.1：监控文件夹 + 全局热键
@@ -676,12 +772,8 @@ class MainWindow(QMainWindow):
         self.watcher.files_ready.connect(self._start_ingest)
         self.watcher.start(config.get_watch_folders())
 
-        self.hotkey = hotkey.HotkeyThread(self)
-        self.hotkey.triggered.connect(self._on_hotkey)
-        self.hotkey.selection_ingest_requested.connect(self._on_selection_ingest)
-        # 注册失败要让用户看得到（状态栏消息很快被覆盖，开机自启时更看不到）
-        self.hotkey.failed.connect(self._on_hotkey_failed)
-        self.hotkey.start()
+        self.hotkey = None
+        self._start_hotkeys()
 
         # 单实例 IPC：右键菜单 --add 转发收录 / 无参二次启动激活窗口
         self.ipc_server = ipc.IpcServer(self)
@@ -771,6 +863,7 @@ class MainWindow(QMainWindow):
             self._welcome_panel.deleteLater()
             self._welcome_panel = None
             self._llm_card = None
+            self._hotkey_strip_label = None
 
     def _build_welcome_panel(self):
         panel = QWidget()
@@ -783,7 +876,7 @@ class MainWindow(QMainWindow):
         title.setObjectName("welcomeTitle")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
-        subtitle = QLabel("拖入文档即收录，然后直接用自然语言提问；Ctrl+Shift+A 收录资源管理器选中项，Ctrl+Shift+Q 存剪贴板")
+        subtitle = QLabel("拖入或 Ctrl+V 粘贴文件即可收录，然后直接用自然语言提问")
         subtitle.setObjectName("welcomeSubtitle")
         subtitle.setAlignment(Qt.AlignCenter)
         layout.addWidget(subtitle)
@@ -802,7 +895,58 @@ class MainWindow(QMainWindow):
             cards_row.addWidget(card)
         cards_row.addStretch(1)
         layout.addLayout(cards_row)
+        layout.addSpacing(6)
+        layout.addWidget(self._build_hotkey_strip(), 0, Qt.AlignHCenter)
         return panel
+
+    def _build_hotkey_strip(self):
+        """欢迎面板底部：当前全局快捷键一览 + "修改"入口（启动即可见、可配置）。"""
+        strip = QFrame()
+        strip.setObjectName("hotkeyStrip")
+        row = QHBoxLayout(strip)
+        row.setContentsMargins(14, 8, 10, 8)
+        row.setSpacing(12)
+        title = QLabel("全局快捷键")
+        title.setObjectName("hotkeyStripTitle")
+        row.addWidget(title)
+        self._hotkey_strip_label = QLabel()
+        self._hotkey_strip_label.setObjectName("hotkeyStripText")
+        self._hotkey_strip_label.setTextFormat(Qt.RichText)
+        row.addWidget(self._hotkey_strip_label)
+        edit_btn = QPushButton("修改")
+        edit_btn.setObjectName("linkButton")
+        edit_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        edit_btn.setAccessibleName("修改全局快捷键")
+        edit_btn.clicked.connect(self._open_hotkey_settings)
+        row.addWidget(edit_btn)
+        return strip
+
+    def _hotkey_summary_html(self) -> str:
+        parts = []
+        for action, (_, desc) in config.HOTKEY_ACTIONS.items():
+            key = hotkey.display(self._hotkeys.get(action, ""))
+            key_html = (f"<span style='color:{TEXT}; font-weight:600;'>{escape(key)}</span>"
+                        if key else f"<span style='color:{SUBTLE};'>未设置</span>")
+            parts.append(f"{escape(desc)} {key_html}")
+        return "<span style='color:%s;'>%s</span>" % (SUBTLE, " &nbsp;·&nbsp; ".join(parts))
+
+    def _refresh_hotkey_texts(self):
+        """快捷键变化后刷新所有提到它的文字（输入框提示、状态栏、欢迎面板）。"""
+        clip = hotkey.display(self._hotkeys.get("clipboard", ""))
+        sel = hotkey.display(self._hotkeys.get("selection", ""))
+        tips = ["输入问题，回车发送", "拖入或粘贴文件收录"]
+        if sel:
+            tips.append(f"{sel} 收录选中项")
+        if clip:
+            tips.append(f"{clip} 存剪贴板")
+        self.input.setPlaceholderText("；".join(tips))
+        self.statusBar().showMessage(
+            "就绪（拖入或 Ctrl+V 粘贴文件即可收录"
+            + (f"；{clip} 保存剪贴板" if clip else "") + "）"
+        )
+        label = getattr(self, "_hotkey_strip_label", None)
+        if label is not None:
+            label.setText(self._hotkey_summary_html())
 
     def _refresh_llm_card(self):
         """第三张卡随 API Key 配置状态变化（设置保存后立即刷新，不必重启）。"""
@@ -832,7 +976,7 @@ class MainWindow(QMainWindow):
     def _make_bubble_label(self, text, is_markdown=False):
         if is_markdown:
             # LLM 回答：Qt 自带解析器渲染 Markdown（原始 HTML/图片/非 http 链接已在 render 里屏蔽）
-            html, natural_w = markdown.render(text, font_px=15, link_color=ACCENT)
+            html, natural_w = markdown.render(text, font_px=theme.BODY_PX, link_color=ACCENT)
             label = QLabel(html)
             label.linkActivated.connect(self._open_link)
             est = int(natural_w) + 10
@@ -846,9 +990,9 @@ class MainWindow(QMainWindow):
         if not is_markdown:
             # wordwrap QLabel 的 sizeHint 宽度不可靠（短文本会挤成窄气泡），
             # 按最长行估算内容宽度，钳制到视口 82%；label 此时未挂入窗口树，
-            # QSS 15px 字号未生效，需显式用 15px 字体度量
+            # QSS 字号未生效，需显式用正文字号度量
             font = label.font()
-            font.setPixelSize(15)
+            font.setPixelSize(theme.BODY_PX)
             fm = QFontMetrics(font)
             est = max((fm.horizontalAdvance(line) for line in text.split("\n")), default=0) + 10
         self._bubble_labels.append((label, est))
@@ -1039,7 +1183,7 @@ class MainWindow(QMainWindow):
     # ---------- 监控文件夹 / 剪贴板热键 ----------
 
     def _open_watch_settings(self, focus_api_key: bool = False):
-        dialog = WatchFoldersDialog(self)
+        dialog = WatchFoldersDialog(self._hotkeys, self)
         if focus_api_key:
             dialog.focus_api_key()
         if dialog.exec() != QDialog.Accepted:
@@ -1078,6 +1222,13 @@ class MainWindow(QMainWindow):
             self._refresh_llm_card()
         if folders_saved:
             self.watcher.restart()
+        new_hotkeys = dialog.hotkey_values()
+        if new_hotkeys != self._hotkeys:
+            try:
+                config.save_hotkeys(new_hotkeys)
+                self._start_hotkeys()
+            except (config.ConfigError, OSError) as e:
+                errors.append(f"快捷键未保存：{e}")
         if errors:
             QMessageBox.warning(self, "保存失败", "\n".join(errors))
             self.statusBar().showMessage(errors[0])
@@ -1087,6 +1238,34 @@ class MainWindow(QMainWindow):
             )
         else:
             self.statusBar().showMessage("设置已保存（未监控任何文件夹）")
+
+    def _start_hotkeys(self):
+        """按配置注册全局快捷键；改键后再次调用即替换（旧线程先注销再起新线程）。"""
+        if self.hotkey is not None:
+            self.hotkey.stop()
+        self._hotkeys = config.get_hotkeys()
+        self.hotkey = hotkey.HotkeyThread(self._hotkeys, self)
+        self.hotkey.triggered.connect(self._on_hotkey)
+        self.hotkey.selection_ingest_requested.connect(self._on_selection_ingest)
+        # 注册失败要让用户看得到（状态栏消息很快被覆盖，开机自启时更看不到）
+        self.hotkey.failed.connect(self._on_hotkey_failed)
+        self.hotkey.start()
+        self._refresh_hotkey_texts()
+
+    def _open_hotkey_settings(self):
+        dialog = HotkeyDialog(self._hotkeys, self)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        new = dialog.values()
+        if new == self._hotkeys:
+            return
+        try:
+            config.save_hotkeys(new)
+        except (config.ConfigError, OSError) as e:
+            QMessageBox.warning(self, "保存失败", f"快捷键未保存：{e}")
+            return
+        self._start_hotkeys()
+        show_toast("快捷键已更新")
 
     def _on_hotkey_failed(self, msg: str):
         self.statusBar().showMessage(msg)
@@ -1104,7 +1283,7 @@ class MainWindow(QMainWindow):
         self._start_ingest([path])
 
     def _on_selection_ingest(self):
-        """Ctrl+Shift+A：收录资源管理器（或桌面）当前选中的文件/文件夹。"""
+        """全局快捷键（默认 Ctrl+Shift+A）：收录资源管理器（或桌面）当前选中的文件/文件夹。"""
         from ..explorer_selection import foreground_target
 
         # 前台窗口必须在热键触发的当下取；COM 读取选中项放到工作线程
@@ -1216,6 +1395,85 @@ class MainWindow(QMainWindow):
         self.input_card.style().unpolish(self.input_card)
         self.input_card.style().polish(self.input_card)
 
+    def _ingest_clipboard(self, mime):
+        """Ctrl+V 收录：文件 → 收录文件；文字 → 网址抓网页 / 其余存为笔记；截图 → 存 PNG 走 OCR。
+
+        顺序是文件 > 文字 > 图片：从 Word/Excel 复制时剪贴板同时带文字和一张渲染图，
+        应该收录文字；只有截图这种纯图片才当图片收录。
+        """
+        if mime is None:
+            return
+        files = clipboard_files(mime)
+        if files:
+            self._start_ingest(files)
+            return
+        text = mime.text().strip() if mime.hasText() else ""
+        if text:
+            if web.is_bare_url(text):
+                self._append_user(text)
+                self._start_web_fetch(text)
+                return
+            path = ingest.save_clipboard_note(text)
+            self._add_system_notice(f"已粘贴文字（{len(text)} 字），正在收录")
+            self._start_ingest([path])
+            return
+        if mime.hasImage():
+            image = mime.imageData()
+            if image is not None and not image.isNull():
+                path = ingest.new_note_path("截图", ".png")
+                if image.save(path, "PNG"):
+                    self._add_system_notice("已粘贴图片，正在识别文字并收录")
+                    self._start_ingest([path])
+                    return
+        self.statusBar().showMessage("剪贴板里没有可收录的内容")
+
+    def _on_doc_context_menu(self, pos):
+        item = self.doc_list.itemAt(pos)
+        if item is None:
+            return
+        menu = QMenu(self)
+        open_act = menu.addAction("打开原文件")
+        remove_act = menu.addAction("从知识库移除")
+        chosen = menu.exec(self.doc_list.viewport().mapToGlobal(pos))
+        if chosen is open_act:
+            self._on_doc_double_clicked(item)
+        elif chosen is remove_act:
+            self._confirm_remove(item)
+
+    def _confirm_remove(self, item):
+        if item is None or self._shutting_down:
+            return
+        doc_id = item.data(Qt.UserRole + 1)
+        title = item.data(Qt.UserRole + 2) or ""
+        if doc_id is None:
+            return
+        ret = QMessageBox.question(
+            self, "从知识库移除",
+            f"确定移除《{title}》吗？\n\n将删除它在知识库中的索引和归档副本，之后提问不会再用到它。"
+            "\n你电脑上的原文件不受影响。",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        )
+        if ret != QMessageBox.Yes:
+            return
+        self.statusBar().showMessage(f"正在移除《{title}》…")
+        worker = RemoveWorker(doc_id, parent=self)
+        worker.done.connect(lambda ok, err, t=title: self._on_removed(t, ok, err))
+        self._keep_worker(worker)
+        worker.start()
+
+    def _on_removed(self, title, ok, err):
+        if self._shutting_down:
+            return
+        self._refresh_doc_list()
+        if ok:
+            self._add_system_notice(f"已从知识库移除《{title}》")
+            self.statusBar().showMessage(f"已移除《{title}》")
+        elif err:
+            show_toast(f"移除失败：{err}", success=False)
+            self.statusBar().showMessage(f"移除《{title}》失败：{err}")
+        else:
+            self.statusBar().showMessage(f"《{title}》已不在知识库中")
+
     def _on_doc_double_clicked(self, item):
         path = item.data(Qt.UserRole)
         if path and os.path.isfile(path):
@@ -1240,6 +1498,8 @@ class MainWindow(QMainWindow):
                 meta += "  " + " ".join(f"#{x.strip()}" for x in tags[:3])
             item = QListWidgetItem()
             item.setData(Qt.UserRole, doc["file_path"])
+            item.setData(Qt.UserRole + 1, doc["id"])
+            item.setData(Qt.UserRole + 2, doc["title"])
             item.setToolTip(doc["file_path"])
             card = DocCard(doc["title"], meta)
             item.setSizeHint(card.sizeHint())
@@ -1376,13 +1636,140 @@ class MainWindow(QMainWindow):
 _orphan_workers = []
 
 
-class WatchFoldersDialog(QDialog):
-    """设置：监控文件夹、开机自启、AI 问答接口；确定后由主窗口保存（监控变化时重启 watcher）。"""
+class HotkeyForm(QWidget):
+    """全局快捷键录入区：每个动作一个按键录入框，可清空（不启用）或恢复默认。
 
-    def __init__(self, parent=None):
+    快捷键对话框和设置对话框共用；validity_changed 通知外层启用/禁用保存按钮。
+    """
+
+    validity_changed = Signal(bool)
+
+    def __init__(self, current: dict, parent=None):
+        super().__init__(parent)
+        self._current = dict(current)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(8)
+        form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._edits = {}
+        for action, (default, desc) in config.HOTKEY_ACTIONS.items():
+            edit = QKeySequenceEdit()
+            edit.setMaximumSequenceLength(1)  # 只要一组组合键，不要 Emacs 式连按
+            edit.setClearButtonEnabled(True)
+            edit.setAccessibleName(desc)
+            edit.setKeySequence(QKeySequence.fromString(current.get(action, ""), QKeySequence.PortableText))
+            edit.setToolTip(f"默认：{hotkey.display(default)}；点右侧 × 清空表示不启用")
+            edit.keySequenceChanged.connect(self.validate)
+            self._edits[action] = edit
+            form.addRow(desc, edit)
+        layout.addLayout(form)
+
+        row = QHBoxLayout()
+        self.status = QLabel()
+        self.status.setObjectName("dialogStatus")
+        self.status.setWordWrap(True)
+        row.addWidget(self.status, 1)
+        reset_btn = QPushButton("恢复默认")
+        reset_btn.clicked.connect(self._reset)
+        row.addWidget(reset_btn, 0, Qt.AlignTop)
+        layout.addLayout(row)
+        self.validate()
+
+    def values(self) -> dict:
+        return {a: e.keySequence().toString(QKeySequence.PortableText) for a, e in self._edits.items()}
+
+    def _reset(self):
+        for action, (default, _) in config.HOTKEY_ACTIONS.items():
+            self._edits[action].setKeySequence(QKeySequence.fromString(default, QKeySequence.PortableText))
+
+    def problems(self) -> list:
+        problems = []
+        seen = {}
+        for action, seq in self.values().items():
+            if not seq:
+                continue
+            desc = config.HOTKEY_ACTIONS[action][1]
+            _, _, err = hotkey.parse(seq)
+            if err:
+                problems.append(f"「{desc}」：{err}")
+                continue
+            if seq in seen:
+                problems.append(f"「{desc}」和「{seen[seq]}」用了同一组按键")
+                continue
+            seen[seq] = desc
+            # 本程序当前已注册的按键试注册会失败，不算占用
+            if seq not in self._current.values() and not hotkey.is_available(seq):
+                problems.append(f"「{desc}」的 {hotkey.display(seq)} 已被其他程序占用，请换一个")
+        return problems
+
+    def validate(self, *_) -> bool:
+        problems = self.problems()
+        if problems:
+            self.status.setStyleSheet("color: #D14343; font-size: 12px;")
+            self.status.setText("\n".join(problems))
+        elif not any(self.values().values()):
+            self.status.setStyleSheet(f"color: {SUBTLE}; font-size: 12px;")
+            self.status.setText("所有快捷键都已关闭，仍可拖放或 Ctrl+V 粘贴收录。")
+        else:
+            self.status.setStyleSheet(f"color: {SUBTLE}; font-size: 12px;")
+            self.status.setText("点击输入框后按下新的组合键即可修改，需要包含 Ctrl、Alt 或 Win 键。")
+        self.validity_changed.emit(not problems)
+        return not problems
+
+
+class HotkeyDialog(QDialog):
+    """全局快捷键设置（欢迎面板"修改"、侧栏"快捷键"按钮打开）。"""
+
+    def __init__(self, current: dict, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("全局快捷键")
+        self.setMinimumWidth(460)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 18, 20, 16)
+        layout.setSpacing(12)
+
+        tip = QLabel("在任何程序里按下这些快捷键都能直接收录。")
+        tip.setObjectName("dialogTip")
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+
+        bottom = QHBoxLayout()
+        bottom.addStretch(1)
+        cancel_btn = QPushButton("取消")
+        cancel_btn.clicked.connect(self.reject)
+        self.ok_btn = QPushButton("保存")
+        self.ok_btn.setObjectName("primaryButton")
+        self.ok_btn.setDefault(True)
+        self.ok_btn.clicked.connect(self.accept)
+        bottom.addWidget(cancel_btn)
+        bottom.addWidget(self.ok_btn)
+
+        self.form = HotkeyForm(current, self)
+        self.form.validity_changed.connect(self.ok_btn.setEnabled)
+        self.ok_btn.setEnabled(not self.form.problems())
+        layout.addWidget(self.form)
+        layout.addLayout(bottom)
+
+    def values(self) -> dict:
+        return self.form.values()
+
+    def accept(self):
+        if not self.form.validate():  # 录入后外部程序才占用等极端情况：保存前再查一次
+            return
+        super().accept()
+
+
+class WatchFoldersDialog(QDialog):
+    """设置：监控文件夹、开机自启、AI 问答接口、全局快捷键；确定后由主窗口保存（监控变化时重启 watcher）。"""
+
+    def __init__(self, current_hotkeys: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle("设置")
-        self.setMinimumSize(480, 520)
+        self.setMinimumSize(480, 640)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
@@ -1430,6 +1817,14 @@ class WatchFoldersDialog(QDialog):
         self.api_key_edit.setEchoMode(QLineEdit.Password)
         self.api_key_edit.setPlaceholderText("粘贴 API Key")
         self.api_key_edit.setAccessibleName("API Key")
+        # 跳到当前服务商的 Key 管理页；"其他"服务商没有固定地址，隐藏
+        self.get_key_btn = QPushButton("获取 API Key")
+        self.get_key_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.get_key_btn.clicked.connect(self._open_key_page)
+        key_row = QHBoxLayout()
+        key_row.setSpacing(6)
+        key_row.addWidget(self.api_key_edit, 1)
+        key_row.addWidget(self.get_key_btn)
         # 模型：下拉选择（自动 / 预设 / 账户实际可用列表），也可直接输入
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
@@ -1444,7 +1839,7 @@ class WatchFoldersDialog(QDialog):
         model_row.addWidget(self.model_combo, 1)
         model_row.addWidget(self.refresh_models_btn)
         form.addRow("服务商", self.provider_combo)
-        form.addRow("API Key", self.api_key_edit)
+        form.addRow("API Key", key_row)
         form.addRow("模型", model_row)
         layout.addLayout(form)
         self.llm_status = QLabel()
@@ -1505,6 +1900,14 @@ class WatchFoldersDialog(QDialog):
         privacy.setStyleSheet(f"color: {SUBTLE}; font-size: 12px;")
         layout.addWidget(privacy)
 
+        # ---------- 全局快捷键：和 API Key 一样在这里配置 ----------
+        hk_title = QLabel("全局快捷键（在任何程序里按下都能直接收录）：")
+        hk_title.setWordWrap(True)
+        hk_title.setStyleSheet(f"color: {TEXT}; font-size: 13px; margin-top: 6px;")
+        layout.addWidget(hk_title)
+        self.hotkey_form = HotkeyForm(current_hotkeys, self)
+        layout.addWidget(self.hotkey_form)
+
         bottom = QHBoxLayout()
         bottom.addStretch(1)
         cancel_btn = QPushButton("取消")
@@ -1533,6 +1936,9 @@ class WatchFoldersDialog(QDialog):
 
     def autostart_checked(self) -> bool:
         return self.autostart_cb.isChecked()
+
+    def hotkey_values(self) -> dict:
+        return self.hotkey_form.values()
 
     def focus_api_key(self):
         """从欢迎面板"配置 API Key"卡片打开时，光标直接落在 API Key 输入框。"""
@@ -1564,8 +1970,17 @@ class WatchFoldersDialog(QDialog):
 
     _AUTO_MODEL = "自动选择（推荐）"
 
+    def _open_key_page(self):
+        p = llm.get_provider(self._provider_id())
+        if p and p.get("key_url"):
+            QDesktopServices.openUrl(QUrl(p["key_url"]))
+
     def _on_provider_changed(self, *_):
         p = llm.get_provider(self._provider_id())
+        key_url = p.get("key_url") if p else None
+        self.get_key_btn.setVisible(bool(key_url))
+        self.get_key_btn.setToolTip(f"在浏览器中打开 {p['name']} 的 API Key 管理页面\n{key_url}"
+                                    if key_url else "")
         if p is not None:
             self.base_url_edit.setPlaceholderText(p["base_url"])
             self.base_url_edit.setEnabled(False)  # 预设服务商地址固定
@@ -1671,6 +2086,8 @@ class WatchFoldersDialog(QDialog):
     def accept(self):
         """保存前验证 Key：只向所选服务商发一次请求，同时自动选定模型。验证在后台线程，不卡界面。"""
         if self._verifying:
+            return
+        if not self.hotkey_form.validate():  # 快捷键无效/冲突：提示显示在快捷键区，不关闭
             return
         if self._models_worker is not None:
             self._set_llm_status("正在获取模型列表，请稍候再保存…")

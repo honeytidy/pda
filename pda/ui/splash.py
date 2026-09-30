@@ -25,13 +25,13 @@ QFrame#splashBrand {{
 QLabel#splashBrandText {{
     color: #FFFFFF;
     font-size: 24px;
-    font-weight: bold;
+    font-weight: 600;
     background: transparent;
 }}
 QLabel#splashTitle {{
     color: {TEXT};
     font-size: 20px;
-    font-weight: bold;
+    font-weight: 600;
     background: transparent;
 }}
 QLabel#splashSubtitle {{

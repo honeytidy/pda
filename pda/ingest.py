@@ -224,19 +224,43 @@ def _remove_document(doc_id: int, archive_path: str):
         _safe_remove(archive_path)
 
 
-def save_clipboard_note(text: str) -> str:
-    """把剪贴板文本存为笔记文件（data/notes/笔记_YYYYMMDD_HHMMSS.txt），返回路径。"""
+def remove_document(doc_id: int) -> bool:
+    """用户手动移除文档：删索引（SQLite/FTS/向量）和 data/files 下的归档副本。
+
+    用户电脑上的原文件不动；来源是本程序生成的笔记（data/notes/ 下的剪贴板笔记、
+    网页、截图）时一并删除，否则会留下无人引用的文件。文档已不存在返回 False。
+    """
+    with _INGEST_LOCK:  # 与入库串行：避免删到一半时同一文件正在覆盖更新
+        doc = db.get_document(doc_id)
+        if doc is None:
+            return False
+        _remove_document(doc_id, doc["file_path"])
+        src = doc.get("source_path") or ""
+        notes = os.path.normcase(os.path.abspath(config.NOTES_DIR))
+        if src and normalize_source(src).startswith(notes + os.sep):
+            _safe_remove(src)
+    return True
+
+
+def new_note_path(prefix: str, suffix: str) -> str:
+    """data/notes/<prefix>_YYYYMMDD_HHMMSS<suffix>，重名加序号（只生成路径，不创建文件）。"""
     import time as _time
 
     config.ensure_dirs()
-    name = f"笔记_{_time.strftime('%Y%m%d_%H%M%S')}.txt"
-    path = Path(config.NOTES_DIR) / name
+    stamp = _time.strftime('%Y%m%d_%H%M%S')
+    path = Path(config.NOTES_DIR) / f"{prefix}_{stamp}{suffix}"
     n = 1
     while path.exists():
-        path = Path(config.NOTES_DIR) / f"笔记_{_time.strftime('%Y%m%d_%H%M%S')}_{n}.txt"
+        path = Path(config.NOTES_DIR) / f"{prefix}_{stamp}_{n}{suffix}"
         n += 1
-    path.write_text(text, encoding="utf-8")
     return str(path)
+
+
+def save_clipboard_note(text: str) -> str:
+    """把剪贴板文本存为笔记文件（data/notes/笔记_YYYYMMDD_HHMMSS.txt），返回路径。"""
+    path = new_note_path("笔记", ".txt")
+    Path(path).write_text(text, encoding="utf-8")
+    return path
 
 
 def _is_sharing_violation(e: BaseException) -> bool:

@@ -16,9 +16,9 @@ os.environ["PDA_DATA_DIR"] = tempfile.mkdtemp(prefix="pda_preview_")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtGui import QFont  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from pda.ui.theme import app_font  # noqa: E402
 from pda.ui.main_window import MainWindow  # noqa: E402
 
 OUT = Path(__file__).resolve().parent / "markdown_preview.png"
@@ -62,7 +62,7 @@ FALLBACK = ("未配置 API Key，无法生成智能回答。以下是检索到�
 
 def main():
     app = QApplication(sys.argv)
-    app.setFont(QFont("Microsoft YaHei UI", 10))
+    app.setFont(app_font())
     win = MainWindow()
     win.setAttribute(Qt.WA_DontShowOnScreen)
     win.resize(1100, 1500)

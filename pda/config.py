@@ -167,6 +167,29 @@ def save_llm_config(api_key: str, base_url: str, model: str, auto_tags: bool):
     )
 
 
+# ---------- 全局快捷键 ----------
+# 动作 id -> (默认按键, 说明)。按键用 Qt PortableText 格式（"Ctrl+Shift+Q"），空字符串 = 不启用
+HOTKEY_ACTIONS = {
+    "clipboard": ("Ctrl+Shift+Q", "保存剪贴板为笔记"),
+    "selection": ("Ctrl+Shift+A", "收录资源管理器选中项"),
+}
+
+
+def get_hotkeys() -> dict:
+    """{动作 id: 按键}；配置里缺的动作用默认值，显式设成 "" 表示用户关掉了。"""
+    saved = _read_config_file().get("hotkeys")
+    saved = saved if isinstance(saved, dict) else {}
+    result = {}
+    for action, (default, _) in HOTKEY_ACTIONS.items():
+        value = saved.get(action, default)
+        result[action] = value.strip() if isinstance(value, str) else default
+    return result
+
+
+def save_hotkeys(hotkeys: dict):
+    _update_config_file(hotkeys={a: hotkeys.get(a, "") for a in HOTKEY_ACTIONS})
+
+
 def auto_tags_enabled() -> bool:
     """入库时是否把文档开头发给 LLM 生成标签（pda_config.json 的 auto_tags，默认开）。"""
     return _parse_bool(_read_config_file().get("auto_tags", True), default=True)

@@ -168,7 +168,7 @@ def _launch_main_minimized():
 def main():
     # 125%/150% 等分数缩放下按整数取整会导致字体模糊，PassThrough 保持原生缩放比例
     from PySide6.QtCore import Qt
-    from PySide6.QtGui import QFont, QGuiApplication
+    from PySide6.QtGui import QGuiApplication
 
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
@@ -219,9 +219,10 @@ def main():
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
-    font = QFont("Microsoft YaHei UI", 10)
-    font.setStyleStrategy(QFont.PreferAntialias)
-    app.setFont(font)
+    # 字体规范见 pda/ui/theme.py：Segoe UI（西文/数字）+ 微软雅黑 UI（中文）
+    from pda.ui.theme import app_font
+
+    app.setFont(app_font())
 
     # 启动 splash：尽早出现（重依赖 import 在之后），--add/IPC 转发路径不经过这里；
     # 由原生启动器 pda.exe 拉起时（PDA_NO_INTERNAL_SPLASH=1）跳过——外部 splash 已显示；
