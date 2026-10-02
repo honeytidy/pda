@@ -3,12 +3,20 @@
 
 产物：dist/pda/pda.exe（启动器）+ main.exe（应用本体）。
 
-优先用项目下 .venv（干净环境）；venv 里的 PySide6 损坏（PyPI Qt 在本机
-WinError 127，原因未查明）时自动回退到当前解释器（anaconda base 的 conda
-版 PySide6 6.11.0 实测工作正常）。
+优先用项目下 .venv（干净环境）。venv 里的 PySide6 损坏（PyPI Qt 在本机
+WinError 127，原因未查明）时，需显式加 --allow-conda 才回退到当前解释器
+（anaconda base 的 conda 版 PySide6 6.11.0 实测工作正常）：换解释器会得到
+依赖版本不同的产物，不能悄悄回退。
 
-用法：python scripts/build_exe.py
+内置语义模型：构建前确保 build_model_cache/ 下有 bge-small-zh 模型缓存（缺失时
+先从 dist/pda/data/model_cache 复制，再不行用构建解释器下载），构建后放进
+dist/pda/data/model_cache。安装包和便携 zip 都从那里取模型；缺模型时 ISCC 直接
+报错，不会静默打出不带模型的包。
+
+用法：python scripts/build_exe.py [--allow-conda] [--installer]
+  --installer：构建完成后调用 ISCC 生成安装包（版本号取 pda/__init__.py 的 __version__）
 """
+import argparse
 import os
 import shutil
 import subprocess
@@ -34,8 +42,24 @@ COLLECT_ALL = [
 ]
 # build_deps/ 里放 PyPI 版 numpy（OpenBLAS ~21MB，替代 anaconda MKL ~350MB）
 # 和 opencv-python-headless，--paths 让它们优先于 anaconda 环境里的同名包。
-# 准备：python -m pip install --target=build_deps numpy opencv-python-headless
+# 准备（numpy 与 requirements.txt 一致，opencv 固定为已验证版本）：
+#   python -m pip install --target=build_deps numpy==2.5.3 opencv-python-headless==5.0.0.93
 BUILD_DEPS = ROOT / "build_deps"
+BUILD_DEPS_REQS = ("numpy==2.5.3", "opencv-python-headless==5.0.0.93")
+
+# 内置语义模型的暂存目录（不放 build/：PyInstaller --clean 会清 workpath）
+MODEL_NAME = "BAAI/bge-small-zh-v1.5"
+MODEL_STAGE = ROOT / "build_model_cache"
+DIST_MODEL = ROOT / "dist" / "pda" / "data" / "model_cache"
+# 与 pda/embeddings.py::_model_cached 的判断一致
+_MODEL_DIRS = ("models--Qdrant--bge-small-zh-v1.5", "fast-bge-small-zh-v1.5")
+
+# ISCC 查找顺序：环境变量 ISCC → 以下位置（Inno Setup 7）
+ISCC_CANDIDATES = [
+    r"D:\Programs\Inno Setup 7\ISCC.exe",
+    r"C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
+    r"C:\Program Files\Inno Setup 7\ISCC.exe",
+]
 
 EXCLUDES = [
     # anaconda base 同时装了 PyQt6，PyInstaller 不允许一个应用里混两种 Qt 绑定
@@ -92,8 +116,8 @@ def run(cmd, **kw):
     subprocess.run([str(c) for c in cmd], check=True, cwd=ROOT, **kw)
 
 
-def pick_builder_python() -> Path:
-    """优先 venv；venv 的 PySide6 不可用则回退当前解释器。"""
+def pick_builder_python(allow_conda: bool) -> Path:
+    """优先 venv；venv 的 PySide6 不可用时，只有 --allow-conda 才回退当前解释器。"""
     if VENV_PY.is_file():
         r = subprocess.run(
             [str(VENV_PY), "-c", "import PySide6.QtCore"],
@@ -102,8 +126,11 @@ def pick_builder_python() -> Path:
         if r.returncode == 0:
             print("使用 venv 打包")
             return VENV_PY
-        print("venv 的 PySide6 不可用，回退当前解释器打包")
+        print("venv 的 PySide6 不可用")
     fallback = Path(sys.executable)
+    if not allow_conda:
+        sys.exit(f"错误：项目 .venv 不可用。确认要用当前解释器（{fallback}）打包时，\n"
+                 "  加 --allow-conda 重新运行（产物依赖版本以该环境为准）。")
     print("=" * 60)
     print(f"警告：未使用项目 .venv，改用当前解释器打包：{fallback}")
     print("      产物会带上该环境里的包，体积和依赖版本可能与预期不同。")
@@ -169,6 +196,61 @@ def build_launcher() -> bool:
     return True
 
 
+def _has_model(cache: Path) -> bool:
+    return cache.is_dir() and any((cache / n).is_dir() for n in _MODEL_DIRS)
+
+
+def _build_env() -> dict:
+    env = _build_env()
+    return env
+
+
+def ensure_model_staged(builder: Path) -> None:
+    """确保 MODEL_STAGE 下有模型缓存。放在 PyInstaller 之前：缺模型尽早失败。"""
+    if _has_model(MODEL_STAGE):
+        print(f"内置模型：{MODEL_STAGE}")
+        return
+    if _has_model(DIST_MODEL):
+        print(f"从 {DIST_MODEL} 复制模型到 {MODEL_STAGE}")
+        shutil.copytree(DIST_MODEL, MODEL_STAGE, dirs_exist_ok=True)
+        return
+    print(f"下载语义模型 {MODEL_NAME} 到 {MODEL_STAGE}（约 90MB）...")
+    MODEL_STAGE.mkdir(parents=True, exist_ok=True)
+    code = ("import sys; from fastembed import TextEmbedding; "
+            "TextEmbedding(model_name=sys.argv[1], cache_dir=sys.argv[2])")
+    run([builder, "-c", code, MODEL_NAME, MODEL_STAGE], env=_build_env())
+    if not _has_model(MODEL_STAGE):
+        sys.exit(f"错误：模型下载后仍未在 {MODEL_STAGE} 找到 {_MODEL_DIRS}")
+
+
+def bundle_model() -> None:
+    """把暂存模型放进 dist/pda/data/model_cache（安装包 / 便携 zip 都从这里取）。"""
+    if _has_model(DIST_MODEL):
+        return
+    shutil.copytree(MODEL_STAGE, DIST_MODEL, dirs_exist_ok=True)
+    print(f"已内置模型：{DIST_MODEL}")
+
+
+def app_version() -> str:
+    ns = {}
+    exec((ROOT / "pda" / "__init__.py").read_text(encoding="utf-8"), ns)
+    return ns["__version__"]
+
+
+def find_iscc() -> Path | None:
+    for c in [os.environ.get("ISCC")] + ISCC_CANDIDATES:
+        if c and Path(c).is_file():
+            return Path(c)
+    return None
+
+
+def build_installer() -> None:
+    iscc = find_iscc()
+    if iscc is None:
+        sys.exit("错误：未找到 ISCC.exe（Inno Setup 7）。可设环境变量 ISCC 指向它。")
+    run([iscc, f"/DAppVersion={app_version()}", ROOT / "packaging" / "installer.iss"])
+
+
 def prune_dist() -> None:
     internal = ROOT / "dist" / "pda" / "_internal"
     freed = 0
@@ -186,6 +268,12 @@ def prune_dist() -> None:
 
 
 def main():
+    ap = argparse.ArgumentParser(description="PDA 打包脚本")
+    ap.add_argument("--allow-conda", action="store_true",
+                    help=".venv 不可用时允许回退到当前（conda）解释器打包")
+    ap.add_argument("--installer", action="store_true",
+                    help="构建完成后调用 ISCC 生成安装包")
+    args = ap.parse_args()
     # 先检查 csc：否则 PyInstaller 跑完十几分钟才发现启动器编译不了
     if not find_csc().is_file():
         sys.exit(f"错误：未找到 {find_csc()}（.NET Framework 4.x 自带的 C# 编译器），"
@@ -195,10 +283,14 @@ def main():
         venv.create(VENV, with_pip=True)
         run([VENV_PY, "-m", "pip", "install", "-U", "pip"])
         run([VENV_PY, "-m", "pip", "install", "-r", "requirements.txt",
-             PYINSTALLER_REQ, "pywin32"])
+             "-r", "requirements-ocr.txt", PYINSTALLER_REQ, "pywin32"])
+    if not BUILD_DEPS.is_dir():
+        print("提示：未找到 build_deps/，numpy/opencv 直接用构建解释器里的版本。准备方法：")
+        print(f"  python -m pip install --target=build_deps {' '.join(BUILD_DEPS_REQS)}")
 
-    builder = pick_builder_python()
+    builder = pick_builder_python(args.allow_conda)
     ensure_pyinstaller(builder)
+    ensure_model_staged(builder)
 
     cmd = [
         builder, "-m", "PyInstaller",
@@ -208,7 +300,6 @@ def main():
         "--icon", str(ROOT / "src" / "pda.ico"),
         "--distpath", "dist", "--workpath", "build",
         # 生成的 spec 放进 build/；本脚本是唯一权威构建入口
-        # （仓库根的 pda.spec.reference 只是旧快照，不能直接用 pyinstaller 跑）
         "--specpath", "build",
     ]
     env = dict(os.environ)
@@ -271,7 +362,10 @@ def main():
                 print("已恢复数据目录到 dist/pda/data")
 
     prune_dist()
+    bundle_model()
     build_launcher()
+    if args.installer:
+        build_installer()
     print(f"\n打包完成：{ROOT / 'dist' / 'pda'}（pda.exe = 启动器，main.exe = 应用本体）")
 
 

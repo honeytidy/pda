@@ -10,8 +10,6 @@ import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-import requests
-
 from . import config
 
 _UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -56,6 +54,8 @@ def _check_public_url(url: str):
 
 def _download(url: str) -> tuple:
     """手动跟随重定向（每一跳都做地址检查），返回 (response, raw_bytes)。"""
+    import requests  # 延迟导入：不拖慢窗口首次显示
+
     deadline = time.monotonic() + _TOTAL_DEADLINE
     for _ in range(_MAX_REDIRECTS + 1):
         _check_public_url(url)
@@ -68,7 +68,9 @@ def _download(url: str) -> tuple:
                 raise FetchError(f"抓取失败（HTTP {resp.status_code} 无跳转地址）")
             url = urljoin(url, location)
             continue
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            resp.close()  # stream=True：不关闭的话连接一直占着
+            resp.raise_for_status()
         ctype = resp.headers.get("Content-Type", "").lower()
         if ctype and "html" not in ctype and "xml" not in ctype and "text" not in ctype:
             resp.close()
@@ -90,6 +92,8 @@ def _download(url: str) -> tuple:
 
 def fetch_webpage(url: str) -> tuple:
     """抓取 URL，返回 (title, markdown_text)。失败抛 FetchError。"""
+    import requests
+
     try:
         resp, raw = _download(url)
     except requests.Timeout:
@@ -150,18 +154,54 @@ def save_webpage_note(title: str, markdown: str) -> str:
     return str(path)
 
 
+_BLOCK_TAGS = {"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre",
+               "tr", "dt", "dd", "figcaption"}
+
+
 def _html_to_text(html: str) -> str:
-    """readability 的 summary HTML 转纯文本（简单去标签，标题/段落保留换行）。"""
+    """readability 的 summary HTML 转纯文本（标题/段落/列表/表格行各成一段）。
+
+    只取"最内层"的块元素：<li><p>x</p></li> 不会把 x 输出两次；直接写在 <div> 里、
+    不在任何块元素中的文字也保留。
+    """
     import lxml.html
 
     try:
         root = lxml.html.fromstring(html)
         parts = []
-        for el in root.iter():
-            if el.tag in ("h1", "h2", "h3", "h4", "p", "li", "blockquote", "pre"):
-                t = "".join(el.itertext()).strip()
+
+        def walk(el):
+            tag = el.tag if isinstance(el.tag, str) else ""
+            if tag in ("script", "style"):
+                return
+            if tag in _BLOCK_TAGS and not any(
+                isinstance(d.tag, str) and d.tag in _BLOCK_TAGS for d in el.iterdescendants()
+            ):
+                if tag == "tr":  # 表格行：单元格之间留分隔，不粘成一串
+                    t = " | ".join(
+                        "".join(c.itertext()).strip() for c in el if c.tag in ("td", "th")
+                    ).strip(" |")
+                else:
+                    t = "".join(el.itertext()).strip()  # 保留 <pre> / <br> 的换行
                 if t:
                     parts.append(t)
+                return
+            # 容器元素：自身的散落文字（text 与各子元素的 tail）按原顺序单独成段
+            loose = [el.text or ""]
+
+            def flush():
+                t = " ".join("".join(loose).split())
+                if t:
+                    parts.append(t)
+                loose.clear()
+
+            for child in el:
+                flush()
+                walk(child)
+                loose.append(child.tail or "")
+            flush()
+
+        walk(root)
         return "\n\n".join(parts)
     except Exception:
         # 兜底：粗暴去标签

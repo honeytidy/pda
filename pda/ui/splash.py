@@ -5,7 +5,7 @@
 加载重依赖（chromadb/fastembed 等）之前尽早显示。
 """
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QCursor, QGuiApplication
 from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 ACCENT = "#3B6EF6"
@@ -73,8 +73,10 @@ class SplashScreen(QWidget):
         brand_layout.setContentsMargins(0, 0, 0, 0)
         from .icon import make_pixmap
 
+        # 出现在鼠标所在屏幕（多屏时用户正在看的那块），按该屏缩放比绘制 logo
+        screen = QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         brand_text = QLabel()
-        brand_text.setPixmap(make_pixmap(56))  # 眼睛 logo（θ 横放）
+        brand_text.setPixmap(make_pixmap(56, screen.devicePixelRatio()))  # 眼睛 logo（θ 横放）
         brand_text.setAlignment(Qt.AlignCenter)
         brand_layout.addWidget(brand_text)
         layout.addWidget(brand, 0, Qt.AlignHCenter)
@@ -96,7 +98,7 @@ class SplashScreen(QWidget):
         self._status.setAlignment(Qt.AlignCenter)
         layout.addWidget(self._status)
 
-        geo = QGuiApplication.primaryScreen().availableGeometry()
+        geo = screen.availableGeometry()
         self.move(geo.center() - self.rect().center())
 
     def show_status(self, text: str):

@@ -1,11 +1,20 @@
 # -*- coding: utf-8 -*-
 """可插拔 LLM：OpenAI 兼容客户端。无 key 时 has_llm() = False。"""
+import logging
 import re
 import threading
-
-from openai import OpenAI
+import time
 
 from . import config
+
+_log = logging.getLogger(__name__)
+
+
+def _openai_client(*args, **kwargs):
+    """延迟导入 openai（导入要几百毫秒，不拖慢窗口首次显示）。"""
+    from openai import OpenAI as _OpenAI
+
+    return _OpenAI(*args, **kwargs)
 
 _client = None
 _client_key = None  # (api_key, base_url)：配置变了就重建客户端，不必重启
@@ -14,6 +23,10 @@ _client_lock = threading.Lock()  # 问答线程与入库标签线程可能同时
 # 默认 600 秒超时 + 2 次重试：断网时一次入库会卡几十分钟
 _CHAT_TIMEOUT = 60.0
 _TAG_TIMEOUT = 20.0
+
+# 自动标签熔断：连不上服务商后这段时间内不再请求，批量入库不必每个文件都等一次超时
+_TAG_OFFLINE_BACKOFF = 300.0
+_tags_offline_until = 0.0
 
 
 def has_llm() -> bool:
@@ -104,7 +117,7 @@ def list_chat_models(api_key: str, base_url: str, prefs: list = (), timeout: flo
     """
     import openai
 
-    client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0, timeout=timeout)
+    client = _openai_client(api_key=api_key, base_url=base_url, max_retries=0, timeout=timeout)
     try:
         ids = {m.id for m in client.models.list()}
     except (openai.NotFoundError, openai.BadRequestError):
@@ -129,7 +142,7 @@ def verify_and_pick_model(api_key: str, base_url: str, model_prefs: list,
     """
     import openai
 
-    client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0, timeout=timeout)
+    client = _openai_client(api_key=api_key, base_url=base_url, max_retries=0, timeout=timeout)
     prefs = [m for m in ([model_override] if model_override else []) + list(model_prefs) if m]
 
     def _explain(e) -> LlmSetupError:
@@ -190,12 +203,12 @@ def verify_and_pick_model(api_key: str, base_url: str, model_prefs: list,
     return prefs[0]
 
 
-def _get_client(cfg: dict) -> OpenAI:
+def _get_client(cfg: dict):
     global _client, _client_key
     key = (cfg["api_key"], cfg["base_url"])
     with _client_lock:
         if _client is None or _client_key != key:
-            _client = OpenAI(api_key=cfg["api_key"], base_url=cfg["base_url"], max_retries=1)
+            _client = _openai_client(api_key=cfg["api_key"], base_url=cfg["base_url"], max_retries=1)
             _client_key = key
         return _client
 
@@ -233,7 +246,10 @@ def generate_tags(text: str) -> list:
 
     会把文档前 1500 字发给配置的 LLM；pda_config.json 里 "auto_tags": false 可关闭。
     """
+    global _tags_offline_until
     if not has_llm() or not config.auto_tags_enabled():
+        return []
+    if time.monotonic() < _tags_offline_until:
         return []
     try:
         resp = chat(
@@ -252,5 +268,12 @@ def generate_tags(text: str) -> list:
         )
         tags = [t.strip().strip("。；;#") for t in re.split(r"[,，、]", resp)]
         return [t for t in tags if t and len(t) <= 12][:5]
-    except Exception:
+    except Exception as e:
+        import openai
+
+        if isinstance(e, (openai.APITimeoutError, openai.APIConnectionError)):
+            _tags_offline_until = time.monotonic() + _TAG_OFFLINE_BACKOFF
+            _log.warning("生成标签时连不上服务商，%d 秒内暂停自动标签", _TAG_OFFLINE_BACKOFF)
+        else:
+            _log.warning("生成标签失败", exc_info=True)
         return []

@@ -3,6 +3,8 @@
 // - 无参数：毫秒级弹出 splash（420x240 居中圆角卡片，眼睛 logo），拉起同目录
 //   main.exe，轮询到其主窗口出现后关闭。主窗口判定：属于子进程、可见、非最小化、
 //   标题以"个人助理知识库"开头、物理宽度 >= 600（大于 splash 自身，排除 toast 等小窗）。
+//   子进程弹出任何带标题的可见窗口（启动失败 / "正在启动或无响应"等提示框）也立即关闭，
+//   splash 不置顶，避免挡住这些提示。
 //   子进程退出（已有实例被激活）或主窗口留在托盘不出现时，最多 60 秒兜底关闭。
 // - 带参数（--add 等）：不显示 splash，参数原样转发给 main.exe 并立即退出。
 //
@@ -43,7 +45,7 @@ class SplashForm : Form {
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         Size = new Size(w, h);
-        TopMost = true;
+        // 不置顶：main.exe 启动失败时的错误提示框不能被 splash 挡住
         ShowInTaskbar = false;
         DoubleBuffered = true;
         Text = "个人助理知识库";
@@ -221,8 +223,12 @@ static class Program {
             int elapsedMs = 0;
             timer.Tick += (s, e) => {
                 elapsedMs += 200;
-                if (FindMainWindow(childPid)) {
+                int found = FindChildWindow(childPid);
+                if (found == 1) {
                     Log("main");
+                    form.Close();
+                } else if (found == 2) {
+                    Log("dialog");  // 错误/提示框：关掉 splash 让用户看到
                     form.Close();
                 } else if (child.HasExited && elapsedMs >= 1500) {
                     // 子进程秒退（已有实例在跑，转发 activate 后退出）或启动失败
@@ -241,8 +247,10 @@ static class Program {
     // 与 pda/ui/main_window.py 的 setWindowTitle 保持一致（前缀匹配，容许后缀变化）
     const string MainTitle = "个人助理知识库";
 
-    static bool FindMainWindow(uint pid) {
-        bool found = false;
+    /// <summary>0 = 无；1 = 主窗口；2 = 其他带标题的可见窗口（提示框等）。
+    /// 无标题的小窗（toast）不算。</summary>
+    static int FindChildWindow(uint pid) {
+        int found = 0;
         NativeMethods.EnumWindows((hwnd, lp) => {
             uint wpid;
             NativeMethods.GetWindowThreadProcessId(hwnd, out wpid);
@@ -251,10 +259,12 @@ static class Program {
             NativeMethods.GetWindowTextW(hwnd, sb, 256);
             NativeMethods.RECT rc;
             NativeMethods.GetWindowRect(hwnd, out rc);
-            if (sb.ToString().StartsWith(MainTitle, StringComparison.Ordinal) && rc.Right - rc.Left >= 600) {
-                found = true;
+            string title = sb.ToString();
+            if (title.StartsWith(MainTitle, StringComparison.Ordinal) && rc.Right - rc.Left >= 600) {
+                found = 1;
                 return false;
             }
+            if (title.Length > 0) found = 2;  // 继续枚举：主窗口优先
             return true;
         }, IntPtr.Zero);
         return found;

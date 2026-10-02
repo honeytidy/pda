@@ -2,14 +2,16 @@
 """chromadb 本地持久化封装：collection "pda_chunks"，cosine 距离。"""
 import threading
 
-import chromadb
-from chromadb.config import Settings
-
 from . import config
 
 _COLLECTION = "pda_chunks"
 
+# chromadb 单次 add 有上限（client.get_max_batch_size()，SQLite 后端通常几千）；
+# 取不到时用这个保守值
+_FALLBACK_BATCH = 1000
+
 _client = None
+_collection = None
 _client_lock = threading.Lock()
 
 
@@ -17,6 +19,10 @@ def _get_client():
     global _client
     with _client_lock:
         if _client is None:
+            # 延迟导入：chromadb 导入要几秒，不拖慢窗口首次显示
+            import chromadb
+            from chromadb.config import Settings
+
             config.ensure_dirs()
             # 关闭 chromadb 匿名遥测：本地知识库不向第三方上报任何使用数据
             _client = chromadb.PersistentClient(
@@ -27,9 +33,19 @@ def _get_client():
 
 
 def get_collection():
-    return _get_client().get_or_create_collection(
-        name=_COLLECTION, metadata={"hnsw:space": "cosine"}
-    )
+    global _collection
+    if _collection is None:
+        _collection = _get_client().get_or_create_collection(
+            name=_COLLECTION, metadata={"hnsw:space": "cosine"}
+        )
+    return _collection
+
+
+def _max_batch() -> int:
+    try:
+        return max(1, int(_get_client().get_max_batch_size()))
+    except Exception:
+        return _FALLBACK_BATCH
 
 
 def add_chunks(chunk_rows: list):
@@ -37,20 +53,24 @@ def add_chunks(chunk_rows: list):
     if not chunk_rows:
         return
     collection = get_collection()
-    collection.add(
-        ids=[f"{r['doc_id']}_{r['seq']}" for r in chunk_rows],
-        embeddings=[r["vector"] for r in chunk_rows],
-        documents=[r["text"] for r in chunk_rows],
-        metadatas=[
-            {
-                "chunk_id": r["chunk_id"],
-                "doc_id": r["doc_id"],
-                "title": r["title"],
-                "file_path": r["file_path"],
-            }
-            for r in chunk_rows
-        ],
-    )
+    step = _max_batch()
+    # 分批写：大文档一次 add 超过上限会整篇失败回滚。中途失败由调用方按 doc_id 整体删除
+    for i in range(0, len(chunk_rows), step):
+        batch = chunk_rows[i:i + step]
+        collection.add(
+            ids=[f"{r['doc_id']}_{r['seq']}" for r in batch],
+            embeddings=[r["vector"] for r in batch],
+            documents=[r["text"] for r in batch],
+            metadatas=[
+                {
+                    "chunk_id": r["chunk_id"],
+                    "doc_id": r["doc_id"],
+                    "title": r["title"],
+                    "file_path": r["file_path"],
+                }
+                for r in batch
+            ],
+        )
 
 
 def delete_document_chunks(doc_id: int):
@@ -67,7 +87,8 @@ def search(vector: list, top_k: int = 8, doc_ids: list | None = None) -> list:
     doc_ids 不为 None 时只检索这些文档的 chunks（限定范围提问）。
     """
     collection = get_collection()
-    if collection.count() == 0:
+    total = collection.count()
+    if total == 0:
         return []
     kwargs = {}
     if doc_ids is not None:
@@ -75,7 +96,7 @@ def search(vector: list, top_k: int = 8, doc_ids: list | None = None) -> list:
             return []
         kwargs["where"] = {"doc_id": {"$in": [int(d) for d in doc_ids]}}
     result = collection.query(
-        query_embeddings=[vector], n_results=min(top_k, max(collection.count(), 1)),
+        query_embeddings=[vector], n_results=min(top_k, total),
         **kwargs,
     )
     hits = []
@@ -85,9 +106,8 @@ def search(vector: list, top_k: int = 8, doc_ids: list | None = None) -> list:
     dists = result.get("distances", [[]])[0]
     for cid, doc, meta, dist in zip(ids, docs, metas, dists):
         try:
-            doc_id, seq = cid.rsplit("_", 1)
-            seq = int(seq)
-        except ValueError:
+            seq = int(cid.rsplit("_", 1)[1])
+        except (ValueError, IndexError):
             seq = -1
         hits.append(
             {

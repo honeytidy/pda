@@ -3,9 +3,11 @@
 
 供 UI 在后台线程调用；ingest_files 返回每个文件的入库结果。
 """
+import hashlib
 import logging
 import os
 import shutil
+import stat
 import threading
 from pathlib import Path
 
@@ -19,10 +21,32 @@ _INGEST_LOCK = threading.Lock()
 
 _log = logging.getLogger(__name__)
 
+# 拖入文件夹时不进入的目录：版本库、依赖、构建产物、缓存（成千上万个无意义文件）
+_SKIP_DIRS = {"node_modules", "__pycache__", "$recycle.bin", "system volume information",
+              "venv", ".venv", "site-packages", "dist-packages"}
+_HIDDEN_ATTRS = (getattr(stat, "FILE_ATTRIBUTE_HIDDEN", 0x2)
+                 | getattr(stat, "FILE_ATTRIBUTE_SYSTEM", 0x4))
+
+# 解析不出文本、只能"仅归档"的文件超过这个大小不收录（视频、镜像等整份复制进 data/ 只会占满磁盘）
+ARCHIVE_ONLY_MAX = 100 * 1024 * 1024
+
+# embedding + 写向量按批进行：超大文档不必一次把全部向量放进内存
+_EMBED_BATCH = 512
+
+
+def _is_hidden(path: str, name: str) -> bool:
+    if name.startswith("."):
+        return True
+    try:
+        return bool(getattr(os.stat(path), "st_file_attributes", 0) & _HIDDEN_ATTRS)
+    except OSError:
+        return False
+
 
 def collect_files(paths: list) -> list:
-    """展开传入的文件/文件夹路径，递归收集所有文件（不限制类型）。
+    """展开传入的文件/文件夹路径，递归收集文件（不限制类型）。
 
+    展开文件夹时跳过隐藏/系统文件与目录（.git 等）和依赖/缓存目录；直接传入的文件不过滤。
     无权限的子目录跳过（os.walk onerror 忽略），不会中断整批。
     """
     files = []
@@ -31,10 +55,14 @@ def collect_files(paths: list) -> list:
         try:
             if path.is_dir():
                 for root, dirs, names in os.walk(path, onerror=lambda e: None):
-                    dirs.sort()
+                    dirs[:] = sorted(
+                        d for d in dirs
+                        if d.lower() not in _SKIP_DIRS
+                        and not _is_hidden(os.path.join(root, d), d)
+                    )
                     for name in sorted(names):
                         child = os.path.join(root, name)
-                        if os.path.isfile(child):
+                        if os.path.isfile(child) and not _is_hidden(child, name):
                             files.append(child)
             elif path.is_file():
                 files.append(str(path))
@@ -85,6 +113,7 @@ def ingest_file(path: str) -> dict:
 
     重复收录策略（覆盖更新）：按来源路径去重——
     - 来源路径 + 修改时间 + 大小完全一致：跳过（skipped=True）
+    - 修改时间变了但提取出的文本与上次一致：只更新记录的时间/大小，跳过（skipped=True）
     - 来源路径相同但内容变化：新版本解析、embedding、写库全部成功后，才删除旧记录
       （含 chunks/FTS/向量/归档文件）；新版本失败时旧版本保留（replaced=True）
     任一步失败都会回滚本次写入（SQLite 事务 + 删除本次向量与归档），下次可重新收录。
@@ -132,6 +161,17 @@ def _ingest_file_locked(path: str) -> dict:
     except Exception as e:
         return {"ok": False, "title": title, "error": f"解析失败：{e}"}
 
+    if archived_only and src_size > ARCHIVE_ONLY_MAX:
+        return {"ok": False, "title": title,
+                "error": f"无法提取文本且文件过大（超过 {ARCHIVE_ONLY_MAX // (1024 * 1024)}MB），未收录"}
+
+    content_hash = hashlib.sha1(text.encode("utf-8", errors="surrogatepass")).hexdigest()
+    if (existing and not archived_only and not existing.get("archived_only")
+            and existing.get("content_hash") == content_hash):
+        # 内容没变（touch / 打开后原样保存 / 同步盘回写）：不重建索引
+        db.update_source_stamp(existing["id"], src_mtime, src_size)
+        return {"ok": True, "title": title, "skipped": True, "doc_id": existing["id"]}
+
     chunks = chunk_text(text)
     if not chunks:
         chunks = chunk_text(f"{title}\n（文档内容为空，已归档原件）")
@@ -149,8 +189,8 @@ def _ingest_file_locked(path: str) -> dict:
                     "kept_old": True,
                     "warning": "新版本未能提取文本，已保留之前收录的版本"}
 
-    # 先算 embedding（最容易失败的一步：模型下载/onnx），失败时什么都还没写
-    vectors = embeddings.embed(chunks)
+    # 先加载模型（最容易失败的一步：模型下载/onnx），失败时什么都还没写
+    embeddings.get_model()
 
     summary = " ".join(text.split())[:80]  # 压掉 \r\n / 制表符等空白
     ext = Path(path).suffix.lower()
@@ -160,20 +200,23 @@ def _ingest_file_locked(path: str) -> dict:
         doc_id, chunk_ids = db.add_document_with_chunks(
             title, str(dest), ext, src_size, summary, chunks,
             source_path=source, source_mtime=src_mtime, source_size=src_size,
-            archived_only=archived_only,
+            archived_only=archived_only, content_hash=content_hash,
         )
-        vectorstore.add_chunks([
-            {
-                "chunk_id": cid,
-                "doc_id": doc_id,
-                "seq": seq,
-                "text": chunk,
-                "title": title,
-                "file_path": str(dest),
-                "vector": vector,
-            }
-            for seq, (cid, chunk, vector) in enumerate(zip(chunk_ids, chunks, vectors))
-        ])
+        for start in range(0, len(chunks), _EMBED_BATCH):
+            part = chunks[start:start + _EMBED_BATCH]
+            vectors = embeddings.embed(part)
+            vectorstore.add_chunks([
+                {
+                    "chunk_id": chunk_ids[start + i],
+                    "doc_id": doc_id,
+                    "seq": start + i,
+                    "text": chunk,
+                    "title": title,
+                    "file_path": str(dest),
+                    "vector": vector,
+                }
+                for i, (chunk, vector) in enumerate(zip(part, vectors))
+            ])
     except BaseException:
         # 回滚：SQLite 已提交的记录、可能写了一部分的向量、归档文件
         if doc_id is not None:

@@ -17,6 +17,7 @@
 
 LLM 配置来源（优先级）：环境变量 PDA_API_KEY / PDA_BASE_URL / PDA_MODEL，
 其次 pda_config.json（可用 PDA_CONFIG_PATH 覆盖；设置界面写入的也是它）。
+设置界面保存的 Key 用 DPAPI 加密存为 "api_key_enc"；手写的明文 "api_key" 仍然可用。
 """
 import json
 import os
@@ -78,29 +79,95 @@ class ConfigError(Exception):
     """pda_config.json 存在但无法解析（此时拒绝写回，避免覆盖掉 api_key 等配置）。"""
 
 
+# 按 (mtime, size) 缓存解析结果：has_llm / auto_tags_enabled / chat 等每次调用都要读配置
+_cache_stamp = None
+_cache_data: dict = {}
+
+
 def _read_config_file(strict: bool = False) -> dict:
     """读取配置文件。utf-8-sig 兼容记事本带 BOM 的保存。
 
     strict=False（读取场景）：解析失败返回 {}；strict=True（写回前）：抛 ConfigError。
+    返回副本，调用方可随意修改。
     """
-    if not CONFIG_PATH.is_file():
+    global _cache_stamp, _cache_data
+    try:
+        st = CONFIG_PATH.stat()
+    except OSError:
         return {}
+    stamp = (st.st_mtime_ns, st.st_size)
+    if stamp == _cache_stamp:
+        return dict(_cache_data)
     try:
         data = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig"))
         if not isinstance(data, dict):
             raise ValueError("顶层不是 JSON 对象")
-        return data
+        _cache_stamp, _cache_data = stamp, data
+        return dict(data)
     except (OSError, ValueError) as e:  # JSONDecodeError 是 ValueError 子类
         if strict:
             raise ConfigError(f"{CONFIG_PATH.name} 格式错误，请先手工修正：{e}") from e
         return {}
 
 
+# ---------- API Key 加密存储 ----------
+# Windows DPAPI（绑定当前用户）：配置文件被拷走/分享出去，别的账户或机器解不开。
+# 老配置里的明文 "api_key" 仍能读，下次保存时改写为加密的 "api_key_enc"。
+_DPAPI_PREFIX = "dpapi:"
+
+
+def _dpapi(data: bytes, protect: bool) -> bytes:
+    import ctypes
+    from ctypes import wintypes
+
+    class _Blob(ctypes.Structure):
+        _fields_ = [("cbData", wintypes.DWORD), ("pbData", ctypes.POINTER(ctypes.c_char))]
+
+    crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    buf = ctypes.create_string_buffer(data, len(data))
+    src = _Blob(len(data), ctypes.cast(buf, ctypes.POINTER(ctypes.c_char)))
+    out = _Blob()
+    fn = crypt32.CryptProtectData if protect else crypt32.CryptUnprotectData
+    # dwFlags=1：CRYPTPROTECT_UI_FORBIDDEN
+    if not fn(ctypes.byref(src), None, None, None, None, 1, ctypes.byref(out)):
+        raise OSError(ctypes.get_last_error() or "DPAPI 调用失败")
+    try:
+        return ctypes.string_at(out.pbData, out.cbData)
+    finally:
+        kernel32.LocalFree(out.pbData)
+
+
+def _encrypt_secret(value: str) -> str | None:
+    """加密失败（非 Windows 等）返回 None，调用方退回明文存储。"""
+    import base64
+
+    try:
+        return _DPAPI_PREFIX + base64.b64encode(_dpapi(value.encode("utf-8"), True)).decode("ascii")
+    except Exception:
+        return None
+
+
+def _decrypt_secret(value) -> str | None:
+    import base64
+
+    if not isinstance(value, str) or not value.startswith(_DPAPI_PREFIX):
+        return None
+    try:
+        return _dpapi(base64.b64decode(value[len(_DPAPI_PREFIX):]), False).decode("utf-8")
+    except Exception:
+        return None  # 换了账户/机器：当作没配置 Key，用户重新填写即可
+
+
+def _file_api_key(cfg: dict) -> str | None:
+    return _decrypt_secret(cfg.get("api_key_enc")) or cfg.get("api_key") or None
+
+
 def get_llm_config() -> dict:
     """返回 {api_key, base_url, model}；api_key 可能为 None。"""
     file_cfg = _read_config_file()
     return {
-        "api_key": os.environ.get("PDA_API_KEY") or file_cfg.get("api_key"),
+        "api_key": os.environ.get("PDA_API_KEY") or _file_api_key(file_cfg),
         "base_url": os.environ.get("PDA_BASE_URL")
         or file_cfg.get("base_url")
         or DEFAULT_BASE_URL,
@@ -136,6 +203,8 @@ def _update_config_file(**values):
     tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
     tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, CONFIG_PATH)
+    global _cache_stamp
+    _cache_stamp = None  # mtime 精度不足时也不会读到旧缓存
 
 
 def save_watch_folders(folders: list):
@@ -146,7 +215,7 @@ def get_llm_file_config() -> dict:
     """设置界面用：只看 pda_config.json 里的值（不含环境变量与默认值）。"""
     cfg = _read_config_file()
     return {
-        "api_key": cfg.get("api_key") or "",
+        "api_key": _file_api_key(cfg) or "",
         "base_url": cfg.get("base_url") or "",
         "model": cfg.get("model") or "",
     }
@@ -158,9 +227,12 @@ def llm_env_overrides() -> list:
 
 
 def save_llm_config(api_key: str, base_url: str, model: str, auto_tags: bool):
-    """空字符串 = 删除该键（回落到默认值 / 无 key 模式）。"""
+    """空字符串 = 删除该键（回落到默认值 / 无 key 模式）。Key 尽量 DPAPI 加密保存。"""
+    api_key = api_key.strip()
+    enc = _encrypt_secret(api_key) if api_key else None
     _update_config_file(
-        api_key=api_key.strip() or None,
+        api_key_enc=enc,
+        api_key=(api_key or None) if enc is None else None,
         base_url=base_url.strip() or None,
         model=model.strip() or None,
         auto_tags=bool(auto_tags),

@@ -423,7 +423,9 @@ class HintCard(QFrame):
         super().__init__(parent)
         self.setObjectName("hintCard")
         self.setProperty("hover", False)
-        self.setFixedSize(210, 92)
+        # 宽度固定、高度可增长：Windows"文本大小"放大后描述文字换行而不被截断
+        self.setFixedWidth(210)
+        self.setMinimumHeight(92)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(4)
@@ -509,6 +511,7 @@ class DropOverlay(QWidget):
 
 
 class IngestWorker(QThread):
+    WRITES_DATA = True  # 退出时必须等它结束（见 MainWindow._shutdown）
     progress = Signal(str)
     finished_all = Signal(list)
 
@@ -536,6 +539,7 @@ class IngestWorker(QThread):
 class RemoveWorker(QThread):
     """后台删除文档（向量库删除在大库上要几十到几百毫秒，不放 GUI 线程）。"""
 
+    WRITES_DATA = True
     done = Signal(bool, str)  # (成功, 失败原因)
 
     def __init__(self, doc_id, parent=None):
@@ -615,6 +619,35 @@ def _alive(obj) -> bool:
         return True
 
 
+# 不归 MainWindow._workers 管的线程：设置对话框里的查询/验证、退出时放弃等待的。
+# 保持引用直到线程结束（否则 Python 包装被回收会销毁运行中的 QThread），_shutdown 也会扫描这里
+_orphan_workers = []
+
+# 退出时只读/联网任务（问答、抓网页、读选中项、验证 Key）最多再等这么久，之后直接放弃
+_READONLY_GRACE_SEC = 1.5
+
+
+def _track_side_worker(worker):
+    if worker in _orphan_workers:
+        return
+    _orphan_workers.append(worker)
+    worker.finished.connect(lambda: _orphan_workers.remove(worker) if worker in _orphan_workers else None)
+
+
+def _detach_worker(worker):
+    """断开结果回调并脱离父对象：父窗口/对话框析构时不连带销毁仍在运行的线程。"""
+    if not (_alive(worker) and worker.isRunning()):
+        return
+    done = getattr(worker, "done", None)
+    if done is not None:
+        try:
+            done.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+    worker.setParent(None)
+    _track_side_worker(worker)
+
+
 class MainWindow(QMainWindow):
     model_loading = Signal(bool)
 
@@ -632,8 +665,15 @@ class MainWindow(QMainWindow):
         self._ingest_running = False
         self._ingest_results = []    # 当前队列已完成批次的结果，队列清空时统一汇报
         self._ingest_toast = None
+        self._web_toast = None       # 网页抓取单独一条 toast，不覆盖收录进度
         self._thinking_widget = None
         self._bubble_labels = []
+        self._chat_rows = []         # 聊天区每一行的 (layout, widget)，超过上限时删最早的
+        # 拖动窗口边缘时 resize 事件很密：停下 50ms 后再统一重排气泡宽度
+        self._refit_timer = QTimer(self)
+        self._refit_timer.setSingleShot(True)
+        self._refit_timer.setInterval(50)
+        self._refit_timer.timeout.connect(self._refit_bubbles)
         self._shutting_down = False  # 进入退出流程后拒绝新的收录请求
         self._shutdown_done = False
         self._selection_busy = False
@@ -688,6 +728,7 @@ class MainWindow(QMainWindow):
         card_layout.setSpacing(8)
         self.input = InputEdit()
         self.input.setObjectName("chatInput")
+        self.input.setAccessibleName("提问输入框")
         # QPlainTextEdit 的 sizeHint 高约 6-7 行，不能交给布局决定高度；
         # 按文档行数动态定高：默认 1 行（卡片约 56px），随内容长高，上限 140px
         self.input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -700,6 +741,8 @@ class MainWindow(QMainWindow):
         self.send_btn.setObjectName("sendButton")
         self.send_btn.setFixedHeight(32)
         self.send_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.send_btn.setToolTip("发送（回车）；Shift+回车换行")
+        self.send_btn.setAccessibleName("发送问题")
         self.send_btn.clicked.connect(self._on_send)
         card_layout.addWidget(self.send_btn, 0, Qt.AlignBottom)
         chat_layout.addWidget(self.input_card)
@@ -719,7 +762,9 @@ class MainWindow(QMainWindow):
         self.doc_list.setSpacing(4)
         self.doc_list.setFrameShape(QFrame.NoFrame)
         self.doc_list.setVerticalScrollMode(QListWidget.ScrollPerPixel)
-        self.doc_list.itemDoubleClicked.connect(self._on_doc_double_clicked)
+        self.doc_list.setAccessibleName("最近收录的文档")
+        # itemActivated：双击和键盘 Enter 都会触发
+        self.doc_list.itemActivated.connect(self._on_doc_double_clicked)
         self.doc_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.doc_list.customContextMenuRequested.connect(self._on_doc_context_menu)
         del_sc = QShortcut(QKeySequence.Delete, self.doc_list)
@@ -730,17 +775,21 @@ class MainWindow(QMainWindow):
         self.empty_hint.setObjectName("emptyHint")
         self.empty_hint.setAlignment(Qt.AlignCenter)
         side_layout.addWidget(self.empty_hint, stretch=1)
-        hint = QLabel("双击打开 · 右键可移除")
+        hint = QLabel("双击或回车打开 · 右键 / Delete 移除")
         hint.setStyleSheet(f"color: {SUBTLE}; font-size: 12px; background: transparent;")
         hint.setAlignment(Qt.AlignCenter)
         side_layout.addWidget(hint)
         self.settings_btn = QPushButton("设置")
         self.settings_btn.setObjectName("settingsButton")
         self.settings_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.settings_btn.clicked.connect(self._open_watch_settings)
+        self.settings_btn.setToolTip("设置（Ctrl+,）：监控文件夹、开机自启、AI 问答、快捷键")
+        self.settings_btn.setAccessibleName("打开设置")
+        self.settings_btn.clicked.connect(lambda: self._open_watch_settings())
         self.hotkeys_btn = QPushButton("快捷键")
         self.hotkeys_btn.setObjectName("settingsButton")
         self.hotkeys_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.hotkeys_btn.setToolTip("修改全局快捷键")
+        self.hotkeys_btn.setAccessibleName("修改全局快捷键")
         self.hotkeys_btn.clicked.connect(self._open_hotkey_settings)
         footer = QHBoxLayout()
         footer.setSpacing(4)
@@ -764,6 +813,12 @@ class MainWindow(QMainWindow):
         paste_sc.setContext(Qt.WindowShortcut)
         paste_sc.activated.connect(lambda: self._ingest_clipboard(QApplication.clipboard().mimeData()))
         self.input.ingest_requested.connect(self._ingest_clipboard)
+        settings_sc = QShortcut(QKeySequence("Ctrl+,"), self)
+        settings_sc.setContext(Qt.WindowShortcut)
+        settings_sc.activated.connect(lambda: self._open_watch_settings())
+        focus_sc = QShortcut(QKeySequence("Ctrl+L"), self)
+        focus_sc.setContext(Qt.WindowShortcut)
+        focus_sc.activated.connect(lambda: self.input.setFocus(Qt.ShortcutFocusReason))
         self._refresh_doc_list()
 
         # V1.1：监控文件夹 + 全局热键
@@ -776,7 +831,8 @@ class MainWindow(QMainWindow):
         self._start_hotkeys()
 
         # 单实例 IPC：右键菜单 --add 转发收录 / 无参二次启动激活窗口
-        self.ipc_server = ipc.IpcServer(self)
+        # quit：卸载程序请求正常退出（先等收录写完，避免强杀损坏数据）
+        self.ipc_server = ipc.IpcServer(self, accept=("paths", "activate", "quit"))
         self.ipc_server.message_received.connect(self._on_ipc_message)
         self.ipc_server.failed.connect(self._on_ipc_failed)
         self.ipc_server.start()
@@ -819,24 +875,34 @@ class MainWindow(QMainWindow):
         # 聊天视口尺寸变化时，气泡宽度按视口 82% 上限重新适配（只有宽度变化才需要）
         if obj is self.scroll.viewport() and event.type() == event.Type.Resize:
             if event.oldSize().width() != event.size().width():
-                self._bubble_labels = [
-                    (label, est) for label, est in self._bubble_labels if _alive(label)
-                ]
-                for label, est in self._bubble_labels:
-                    self._fit_bubble_label(label, est)
+                self._refit_timer.start()
         return super().eventFilter(obj, event)
+
+    def _refit_bubbles(self):
+        self._bubble_labels = [
+            (label, est) for label, est in self._bubble_labels if _alive(label)
+        ]
+        for label, est in self._bubble_labels:
+            self._fit_bubble_label(label, est)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self.overlay.setGeometry(0, 0, self.width(), self.height())
 
     def _scroll_to_bottom(self):
-        QTimer.singleShot(
-            0,
-            lambda: self.scroll.verticalScrollBar().setValue(
-                self.scroll.verticalScrollBar().maximum()
-            ),
-        )
+        # 很高的 markdown 气泡要等布局完成，滚动条 maximum 才更新：等下一次 rangeChanged
+        # 再滚一次（一次性连接）；内容没撑出新高度时 rangeChanged 不来，singleShot(0) 兜底
+        bar = self.scroll.verticalScrollBar()
+
+        def _to_end(*_):
+            try:
+                bar.rangeChanged.disconnect(_to_end)
+            except (RuntimeError, TypeError):
+                pass
+            bar.setValue(bar.maximum())
+
+        bar.rangeChanged.connect(_to_end)
+        QTimer.singleShot(0, lambda: bar.setValue(bar.maximum()))
 
     def _add_row(self, widget, align):
         self._dismiss_welcome_panel()
@@ -853,7 +919,28 @@ class MainWindow(QMainWindow):
             row.addWidget(widget)
             row.addStretch(1)
         self.messages_layout.insertLayout(self.messages_layout.count() - 1, row)
+        self._chat_rows.append((row, widget))
+        self._trim_chat_history()
         self._scroll_to_bottom()
+
+    _MAX_CHAT_ROWS = 200
+
+    def _trim_chat_history(self):
+        """聊天记录只保留最近 _MAX_CHAT_ROWS 行：托盘常驻时气泡无限增长会拖慢 resize 重排。"""
+        while len(self._chat_rows) > self._MAX_CHAT_ROWS:
+            row, widget = self._chat_rows.pop(0)
+            if widget is self._thinking_widget:
+                self._thinking_widget = None
+            self.messages_layout.removeItem(row)
+            if _alive(widget):
+                # 气泡内的 label 也要移出重排列表（deleteLater 之前它们仍然 _alive）
+                self._bubble_labels = [
+                    (label, est) for label, est in self._bubble_labels
+                    if _alive(label) and not widget.isAncestorOf(label)
+                ]
+                widget.hide()
+                widget.deleteLater()
+            row.deleteLater()
 
     def _dismiss_welcome_panel(self):
         """首条消息加入时移除欢迎面板（单向隐藏，本次运行内不再出现）。"""
@@ -1008,6 +1095,7 @@ class MainWindow(QMainWindow):
     def _append_user(self, text):
         bubble = QFrame()
         bubble.setObjectName("userBubble")
+        bubble.setAccessibleName("你：" + text[:60])
         layout = QVBoxLayout(bubble)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.addWidget(self._make_bubble_label(text))
@@ -1025,6 +1113,7 @@ class MainWindow(QMainWindow):
     def _add_assistant(self, text, sources, is_markdown=False):
         bubble = QFrame()
         bubble.setObjectName("assistantBubble")
+        bubble.setAccessibleName("助理：" + text[:60])
         layout = QVBoxLayout(bubble)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
@@ -1079,6 +1168,18 @@ class MainWindow(QMainWindow):
         if paths:
             self._start_ingest(paths)
 
+    @staticmethod
+    def _progress_toast(toast, text, **kw):
+        """toast 还在就就地更新，已关闭（兜底超时/淡出）则新建；返回当前 toast。
+
+        kw 为空：进度态；带 success=：结果态。
+        """
+        pending = not kw
+        if toast is not None and toast.is_alive():
+            toast.update(text, pending=pending, **kw)
+            return toast
+        return show_progress(text) if pending else show_toast(text, **kw)
+
     def _start_ingest(self, paths: list):
         """统一的入库入口：拖放 / 监控文件夹 / IPC 转发 / 剪贴板热键共用。
 
@@ -1095,10 +1196,7 @@ class MainWindow(QMainWindow):
             progress_text = f"正在收录《{os.path.basename(paths[0])}》…"
         else:
             progress_text = "正在收录…"
-        if self._ingest_toast is not None and self._ingest_toast.is_alive():
-            self._ingest_toast.update(progress_text, pending=True)
-        else:
-            self._ingest_toast = show_progress(progress_text)
+        self._ingest_toast = self._progress_toast(self._ingest_toast, progress_text)
         self.statusBar().showMessage(progress_text)
         self._run_next_ingest()
 
@@ -1126,6 +1224,8 @@ class MainWindow(QMainWindow):
         results, self._ingest_results = self._ingest_results, []
         self._report_ingest(results)
 
+    _NOTICE_MAX_ITEMS = 10
+
     def _report_ingest(self, results):
         ok = [r for r in results if r["ok"] and not r.get("skipped")]
         kept_old = [r for r in results if r.get("skipped") and r.get("kept_old")]
@@ -1145,15 +1245,29 @@ class MainWindow(QMainWindow):
         for r in failed:
             parts.append(f"{r['title']} 收录失败：{r['error']}")
         if parts:
-            self._add_system_notice("收录完成 · " + "；".join(parts))
-        elif skipped:
-            self.statusBar().showMessage("文件未变化，跳过收录")
-        else:
+            # 拖入大文件夹时可能上千条：消息里只列前几条，完整清单放 tooltip
+            if len(parts) > self._NOTICE_MAX_ITEMS:
+                summary = (f"收录完成（成功 {len(ok)}，保留旧版本 {len(kept_old)}，"
+                           f"失败 {len(failed)}，未变化 {len(skipped)}）· ")
+                shown = "；".join(parts[:self._NOTICE_MAX_ITEMS])
+                notice = self._add_system_notice(
+                    f"{summary}{shown}；…另有 {len(parts) - self._NOTICE_MAX_ITEMS} 项（悬停查看全部）"
+                )
+                notice.setToolTip("\n".join(parts[:500])
+                                  + (f"\n…共 {len(parts)} 项" if len(parts) > 500 else ""))
+            else:
+                self._add_system_notice("收录完成 · " + "；".join(parts))
+        elif not skipped:
             self._add_system_notice("没有收录任何文件")
-        self.statusBar().showMessage(
-            f"收录完成：成功 {len(ok)} 个，跳过 {len(skipped)} 个，"
-            f"保留旧版本 {len(kept_old)} 个，失败 {len(failed)} 个"
-        )
+        if parts:
+            self.statusBar().showMessage(
+                f"收录完成：成功 {len(ok)} 个，跳过 {len(skipped)} 个，"
+                f"保留旧版本 {len(kept_old)} 个，失败 {len(failed)} 个"
+            )
+        elif skipped:
+            self.statusBar().showMessage(f"文件未变化，跳过收录（{len(skipped)} 个）")
+        else:
+            self.statusBar().showMessage("没有收录任何文件")
         self._refresh_doc_list()
         # 进度 toast 就地更新为结果；已被关闭（兜底超时等）则新建
         if failed:
@@ -1175,19 +1289,23 @@ class MainWindow(QMainWindow):
             text, success = ("文件未变化，跳过收录", True)
         else:
             text, success = ("没有收录任何文件", False)
-        if self._ingest_toast is not None and self._ingest_toast.is_alive():
-            self._ingest_toast.update(text, success=success)
-        else:
-            self._ingest_toast = show_toast(text, success=success)
+        self._ingest_toast = self._progress_toast(self._ingest_toast, text, success=success)
 
     # ---------- 监控文件夹 / 剪贴板热键 ----------
 
     def _open_watch_settings(self, focus_api_key: bool = False):
         dialog = WatchFoldersDialog(self._hotkeys, self)
-        if focus_api_key:
-            dialog.focus_api_key()
-        if dialog.exec() != QDialog.Accepted:
-            return
+        try:
+            if focus_api_key:
+                dialog.focus_api_key()
+            if dialog.exec() != QDialog.Accepted:
+                return
+            self._save_settings(dialog)
+        finally:
+            # 托盘常驻：每次打开都新建对话框，不释放会一直挂在主窗口下累积
+            dialog.deleteLater()
+
+    def _save_settings(self, dialog):
         # 两项设置互相独立：一项失败不影响另一项，失败原因都要让用户看到
         errors = []
         folders = dialog.folders()
@@ -1222,13 +1340,9 @@ class MainWindow(QMainWindow):
             self._refresh_llm_card()
         if folders_saved:
             self.watcher.restart()
-        new_hotkeys = dialog.hotkey_values()
-        if new_hotkeys != self._hotkeys:
-            try:
-                config.save_hotkeys(new_hotkeys)
-                self._start_hotkeys()
-            except (config.ConfigError, OSError) as e:
-                errors.append(f"快捷键未保存：{e}")
+        err = self._apply_hotkeys(dialog.hotkey_values())
+        if err:
+            errors.append(err)
         if errors:
             QMessageBox.warning(self, "保存失败", "\n".join(errors))
             self.statusBar().showMessage(errors[0])
@@ -1239,10 +1353,27 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage("设置已保存（未监控任何文件夹）")
 
+    def _apply_hotkeys(self, new: dict):
+        """保存并重新注册快捷键（设置对话框与快捷键对话框共用）。
+
+        返回 None 表示成功或没变化，否则返回错误文字。
+        """
+        if new == self._hotkeys:
+            return None
+        try:
+            config.save_hotkeys(new)
+        except (config.ConfigError, OSError) as e:
+            return f"快捷键未保存：{e}"
+        self._start_hotkeys()
+        return None
+
     def _start_hotkeys(self):
         """按配置注册全局快捷键；改键后再次调用即替换（旧线程先注销再起新线程）。"""
         if self.hotkey is not None:
-            self.hotkey.stop()
+            old = self.hotkey
+            old.stop()
+            if not old.isRunning():
+                old.deleteLater()  # 已退出的旧线程释放；没停下来的已由 stop() 脱离父对象托管
         self._hotkeys = config.get_hotkeys()
         self.hotkey = hotkey.HotkeyThread(self._hotkeys, self)
         self.hotkey.triggered.connect(self._on_hotkey)
@@ -1254,17 +1385,18 @@ class MainWindow(QMainWindow):
 
     def _open_hotkey_settings(self):
         dialog = HotkeyDialog(self._hotkeys, self)
-        if dialog.exec() != QDialog.Accepted:
-            return
-        new = dialog.values()
+        try:
+            if dialog.exec() != QDialog.Accepted:
+                return
+            new = dialog.values()
+        finally:
+            dialog.deleteLater()
         if new == self._hotkeys:
             return
-        try:
-            config.save_hotkeys(new)
-        except (config.ConfigError, OSError) as e:
-            QMessageBox.warning(self, "保存失败", f"快捷键未保存：{e}")
+        err = self._apply_hotkeys(new)
+        if err:
+            QMessageBox.warning(self, "保存失败", err)
             return
-        self._start_hotkeys()
         show_toast("快捷键已更新")
 
     def _on_hotkey_failed(self, msg: str):
@@ -1335,10 +1467,8 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _start_web_fetch(self, url: str):
-        if self._ingest_toast is not None and self._ingest_toast.is_alive():
-            self._ingest_toast.update("正在抓取网页…", pending=True)
-        else:
-            self._ingest_toast = show_progress("正在抓取网页…")
+        # 独立 toast：抓取失败时不会把正在进行的收录进度改成失败态
+        self._web_toast = self._progress_toast(self._web_toast, "正在抓取网页…")
         self.statusBar().showMessage(f"正在抓取 {url} ...")
         worker = WebWorker(url, parent=self)
         worker.done.connect(self._on_web_fetched)
@@ -1347,12 +1477,14 @@ class MainWindow(QMainWindow):
 
     def _on_web_fetched(self, result: dict):
         if not result["ok"]:
-            if self._ingest_toast is not None and self._ingest_toast.is_alive():
-                self._ingest_toast.update(f"网页抓取失败：{result['error']}", success=False)
-            else:
-                show_toast(f"网页抓取失败：{result['error']}", success=False)
+            self._web_toast = self._progress_toast(
+                self._web_toast, f"网页抓取失败：{result['error']}", success=False
+            )
             self.statusBar().showMessage(f"网页抓取失败：{result['error']}")
             return
+        if self._web_toast is not None and self._web_toast.is_alive():
+            self._web_toast.close()  # 接下来由收录进度 toast 接手
+        self._web_toast = None
         self._add_system_notice(f"已抓取网页《{result['title']}》，正在收录")
         self._start_ingest([result["path"]])
 
@@ -1435,6 +1567,7 @@ class MainWindow(QMainWindow):
         open_act = menu.addAction("打开原文件")
         remove_act = menu.addAction("从知识库移除")
         chosen = menu.exec(self.doc_list.viewport().mapToGlobal(pos))
+        menu.deleteLater()  # 每次右键都新建，用完释放
         if chosen is open_act:
             self._on_doc_double_clicked(item)
         elif chosen is remove_act:
@@ -1497,6 +1630,8 @@ class MainWindow(QMainWindow):
             if tags:
                 meta += "  " + " ".join(f"#{x.strip()}" for x in tags[:3])
             item = QListWidgetItem()
+            # 内容由 setItemWidget 显示，item 本身无文字：给读屏软件一份
+            item.setData(Qt.AccessibleTextRole, f"{doc['title']}，{meta}")
             item.setData(Qt.UserRole, doc["file_path"])
             item.setData(Qt.UserRole + 1, doc["id"])
             item.setData(Qt.UserRole + 2, doc["title"])
@@ -1517,8 +1652,12 @@ class MainWindow(QMainWindow):
         worker.finished.connect(_done)
 
     def _on_ipc_message(self, msg: dict):
-        """IPC 消息：activate 激活窗口；paths 转发收录（结果走系统通知 + 状态栏）。"""
+        """IPC 消息：activate 激活窗口；quit 正常退出；paths 转发收录（结果走系统通知 + 状态栏）。"""
         try:
+            if msg.get("action") == "quit":
+                # 卸载程序请求退出：走与托盘"退出"相同的完整清理（等收录写完）
+                QTimer.singleShot(0, self._quit_app)
+                return
             if msg.get("action") == "activate":
                 self._restore_from_tray()
                 self.statusBar().showMessage("知识库助理已在运行")
@@ -1582,7 +1721,8 @@ class MainWindow(QMainWindow):
         """统一退出清理（托盘退出 / 无托盘关窗 / 注销关机 / aboutToQuit 都会走到，只执行一次）。
 
         顺序：先置"正在退出"拒绝新收录 → 停 IPC（之后的转发回 busy）/ 监控 / 热键 →
-        等所有 worker 结束。等待时每轮重新扫描 _workers：processEvents 期间可能冒出新 worker。
+        等写数据的 worker（收录/移除）结束；只读/联网的最多等 _READONLY_GRACE_SEC 就放弃。
+        等待时每轮重新扫描 _workers：processEvents 期间可能冒出新 worker。
         不 terminate() 入库线程：强杀可能停在 SQLite 事务或 chroma 写入中途，损坏数据。
         """
         if self._shutdown_done:
@@ -1597,15 +1737,26 @@ class MainWindow(QMainWindow):
                 pass
         if self.tray is not None:
             self.tray.hide()
-        deadline = time.monotonic() + wait_ms / 1000
+        start = time.monotonic()
+        deadline = start + wait_ms / 1000
         notified = False
         while True:
-            busy = [w for w in list(self._workers) if _alive(w) and w.isRunning()]
+            running = [w for w in list(self._workers) + list(_orphan_workers)
+                       if _alive(w) and w.isRunning()]
+            writers = [w for w in running if getattr(w, "WRITES_DATA", False)]
+            readers = [w for w in running if not getattr(w, "WRITES_DATA", False)]
+            if readers and time.monotonic() - start >= _READONLY_GRACE_SEC:
+                # 只读/联网任务（问答、抓网页、验证 Key…）不值得让用户干等：断开回调后放弃，
+                # 由进程退出回收线程
+                for w in readers:
+                    _detach_worker(w)
+                readers = []
+            busy = writers + readers
             if not busy:
                 break
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                # 超时（卡死的网络请求等）：记日志，由进程退出回收线程
+                # 超时（入库卡在网络盘等）：记日志，由进程退出回收线程
                 try:
                     import logging
 
@@ -1620,10 +1771,9 @@ class MainWindow(QMainWindow):
                 except Exception:
                     pass
                 for w in busy:
-                    w.setParent(None)  # 脱离窗口，避免随窗口析构时 "QThread destroyed while running"
-                    _orphan_workers.append(w)
+                    _detach_worker(w)  # 脱离窗口，避免随窗口析构时 "QThread destroyed while running"
                 break
-            if not notified:
+            if not notified and writers:
                 notified = True
                 self.statusBar().showMessage("正在等待后台任务结束…")
                 if self._ingest_running:
@@ -1631,9 +1781,6 @@ class MainWindow(QMainWindow):
             # 分片等待 + 处理事件：界面不卡死成"未响应"，worker 的 finished 信号也能被处理
             busy[0].wait(int(min(remaining, 0.2) * 1000))
             QApplication.processEvents()
-
-
-_orphan_workers = []
 
 
 class HotkeyForm(QWidget):
@@ -2052,6 +2199,7 @@ class WatchFoldersDialog(QDialog):
         worker.done.connect(lambda ok, models, msg: self._on_models(ok, models, msg, auto))
         worker.finished.connect(worker.deleteLater)
         self._models_worker = worker
+        _track_side_worker(worker)  # 主窗口退出时也要处理到（见 MainWindow._shutdown）
         worker.start()
 
     def _on_models(self, ok, models, msg, auto):
@@ -2119,6 +2267,7 @@ class WatchFoldersDialog(QDialog):
         worker.done.connect(lambda ok, value, offline: self._on_verified(ok, value, offline, key, base_url, model))
         worker.finished.connect(worker.deleteLater)
         self._verify_worker = worker  # 持有引用直到结束
+        _track_side_worker(worker)
         worker.start()
 
     def _on_verified(self, ok, value, offline, key, base_url, model):
@@ -2144,14 +2293,12 @@ class WatchFoldersDialog(QDialog):
 
     def reject(self):
         if self._verifying:
-            return  # 验证中不关闭，避免后台线程回调到已销毁的对话框
+            # 验证中不关闭（避免后台线程回调到已销毁的对话框），但要让用户知道为什么没反应
+            self._set_llm_status("正在验证 API Key，请稍候…（网络不通时最多约 12 秒）")
+            return
         if self._models_worker is not None:
             # 取消时模型列表还在查：断开回调、脱离父对象让它自行结束，不阻塞关闭
-            w = self._models_worker
-            w.done.disconnect()
-            w.setParent(None)
-            _orphan_workers.append(w)
-            w.finished.connect(lambda: _orphan_workers.remove(w) if w in _orphan_workers else None)
+            _detach_worker(self._models_worker)
             self._models_worker = None
         super().reject()
 

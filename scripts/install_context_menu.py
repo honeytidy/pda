@@ -49,6 +49,13 @@ def command_line(exe: Path | None) -> str:
     return f'"{py}" "{RUN_PY}" --add'
 
 
+def icon_value(exe: Path | None) -> str:
+    if exe:
+        return f'"{exe}",0'
+    ico = PROJECT_ROOT / "src" / "pda.ico"
+    return f'"{ico}"' if ico.is_file() else f'"{sys.executable}",0'
+
+
 def main():
     if sys.platform != "win32":
         print("仅支持 Windows")
@@ -63,6 +70,8 @@ def main():
         key_path = f"{parent_path}\\{KEY_NAME}"
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, key_path) as key:
             winreg.SetValueEx(key, None, 0, winreg.REG_SZ, MENU_NAME)
+            # 与 installer.iss / make_release.py 的 bat 一致：菜单项带程序图标
+            winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, icon_value(exe))
             # MultiSelectModel=Player：去掉经典菜单"多选超过 15 项就隐藏"的限制。
             # 注意 Explorer 仍会每项起一个进程（"%1" 只有一个路径），各自经 IPC
             # 转给主程序排队后秒退。大批量（上百项）建议直接拖进主窗口。

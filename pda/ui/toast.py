@@ -10,8 +10,8 @@
 WA_ShowWithoutActivating（不抢焦点、不出现在任务栏），绝不阻塞主线程。
 """
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
-from PySide6.QtGui import QFontMetrics, QGuiApplication
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QWidget
+from PySide6.QtGui import QCursor, QFontMetrics, QGuiApplication
+from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QWidget
 
 TOAST_QSS = """
 QFrame#toastFrame {
@@ -109,20 +109,23 @@ class Toast(QWidget):
         self.setFixedSize(width, self.HEIGHT)
         self._frame.setGeometry(0, 0, width, self.HEIGHT)
 
+        self._reposition()
+
+        # 重启消失计时：进度态 30s 兜底，结果态 2.5s
+        self._close_timer.stop()
+        self._close_timer.start(self.PENDING_MS if pending else self.DISPLAY_MS)
+
+    def _reposition(self):
         # 屏幕中央堆叠：水平居中（宽度变化时中心不动），第一条垂直居中，后续向下排
-        geo = QGuiApplication.primaryScreen().availableGeometry()
+        geo = _target_screen().availableGeometry()
         index = Toast._active.index(self) if self in Toast._active else 0
-        x = geo.left() + (geo.width() - width) // 2
+        x = geo.left() + (geo.width() - self.width()) // 2
         y = (
             geo.top()
             + (geo.height() - self.HEIGHT) // 2
             + index * (self.HEIGHT + self.GAP)
         )
         self.move(x, y)
-
-        # 重启消失计时：进度态 30s 兜底，结果态 2.5s
-        self._close_timer.stop()
-        self._close_timer.start(self.PENDING_MS if pending else self.DISPLAY_MS)
 
     def update(self, text: str, success: bool = True, pending: bool = False):
         """就地更新：换文案/图标，宽度自适应并重新居中，重启消失计时。"""
@@ -147,7 +150,18 @@ class Toast(QWidget):
             self._close_timer.stop()
         if self in Toast._active:
             Toast._active.remove(self)
+            # 后面的 toast 往上补位，不留空档
+            for t in Toast._active:
+                t._reposition()
         super().closeEvent(event)
+
+
+def _target_screen():
+    """主窗口所在屏幕（窗口隐藏在托盘时取鼠标所在屏幕），多屏时提示出现在用户眼前。"""
+    for w in QApplication.topLevelWidgets():
+        if w.isVisible() and w.isWindow() and not isinstance(w, Toast)                 and w.inherits("QMainWindow") and w.screen() is not None:
+            return w.screen()
+    return QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
 
 
 def show_toast(text: str, success: bool = True) -> Toast:

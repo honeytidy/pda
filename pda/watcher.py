@@ -119,6 +119,10 @@ class FolderWatcher(QObject):
             return
         if not self._start_watchdog():
             self._start_polling()
+        else:
+            # watchdog 只报告启动之后的变化：程序没开期间放进来的文件补扫一次
+            # （已收录且未变化的由 ingest 按签名跳过，代价很小）
+            self._start_initial_scan()
         self._debounce_timer.start()
 
     def stop(self):
@@ -206,11 +210,29 @@ class FolderWatcher(QObject):
         else:
             entry[0] = now
 
+    def _start_initial_scan(self):
+        with self._lock:
+            generation = self._generation
+        threading.Thread(
+            target=self._initial_scan_worker, args=(list(self._folders), generation), daemon=True
+        ).start()
+
+    def _initial_scan_worker(self, folders: list, generation: int):
+        current = {}
+        for folder in folders:
+            current.update(_collect_supported(folder))
+        now = time.time()
+        with self._lock:
+            if generation != self._generation:
+                return
+            for path in current:
+                self._touch_locked(path, now)
+
     # ---------- 定时扫描降级模式 ----------
 
     def _start_polling(self):
         with self._lock:
-            self._snapshot = None  # 首次扫描只建快照，不当作新文件
+            self._snapshot = None
         self._poll_timer = QTimer(self)
         self._poll_timer.setInterval(POLL_INTERVAL_MS)
         self._poll_timer.timeout.connect(self._poll_once)
@@ -236,10 +258,11 @@ class FolderWatcher(QObject):
         with self._lock:
             if generation != self._generation:
                 return  # 期间 stop/start 过：结果属于旧的目录集合，丢弃
-            if self._snapshot is not None:
-                for path, sig in current.items():
-                    if self._snapshot.get(path) != sig:
-                        self._touch_locked(path, now)
+            # 首轮（快照为空）也全部交给 ingest：程序没开期间新增/修改的文件靠它补收
+            previous = self._snapshot or {}
+            for path, sig in current.items():
+                if previous.get(path) != sig:
+                    self._touch_locked(path, now)
             self._snapshot = current
 
     # ---------- 防抖输出 ----------

@@ -4,9 +4,12 @@
 V1.2：限定范围提问——"在XX里/只看XX"之类限定词先按文档标题/标签模糊匹配
 过滤候选文档再检索；匹配不到则全库检索并在答案中提示。
 """
+import logging
 import re
 
 from . import db, embeddings, llm, vectorstore
+
+_log = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (
     "你是用户的个人知识库助理。根据下面给出的资料片段回答用户的问题。\n"
@@ -55,23 +58,23 @@ def parse_scope(query: str) -> str | None:
 
 
 def retrieve(query: str, vec_top: int = 8, fts_top: int = 5,
-             doc_ids: list | None = None) -> list:
+             doc_ids: list | None = None, query_vec: list | None = None) -> list:
     """混合检索：向量 top8 + FTS top5，按 chunk_id 合并去重（向量结果优先）。
 
-    doc_ids 不为 None 时只在指定文档范围内检索。
+    doc_ids 不为 None 时只在指定文档范围内检索。query_vec 可传入已算好的查询向量
+    （同一问题多次检索时只算一次 embedding）。
     """
-    query_vec = embeddings.embed([query])[0]
+    if query_vec is None:
+        query_vec = embeddings.embed([query])[0]
     vec_hits = vectorstore.search(query_vec, top_k=vec_top, doc_ids=doc_ids)
 
     fts_hits = []
     try:
-        # 限定范围时多取一些再过滤
-        fts_hits = db.fts_search(query, top_k=fts_top * 3 if doc_ids else fts_top)
+        fts_hits = db.fts_search(query, top_k=fts_top, doc_ids=doc_ids)
     except Exception:
-        fts_hits = []  # FTS 语法错误等失败时跳过，只靠向量结果
-    if doc_ids is not None:
-        allowed = set(doc_ids)
-        fts_hits = [h for h in fts_hits if h.get("doc_id") in allowed][:fts_top]
+        # FTS 语法错误等失败时跳过，只靠向量结果
+        _log.warning("FTS 检索失败，仅使用向量结果", exc_info=True)
+        fts_hits = []
 
     merged = []
     seen = set()
@@ -102,15 +105,16 @@ def answer(query: str) -> dict:
         else:
             scope_note = f"（未找到匹配「{term}」的文档，已全库检索）\n\n"
 
-    hits = retrieve(query, doc_ids=doc_ids)
+    query_vec = embeddings.embed([query])[0]
+    hits = retrieve(query, doc_ids=doc_ids, query_vec=query_vec)
     if doc_ids is not None and not hits:
         # 限定范围内一无所获（多半是误判了限定词）：退回全库
-        hits = retrieve(query)
+        hits = retrieve(query, query_vec=query_vec)
         scope_note = f"（「{term}」范围内没有相关内容，已全库检索）\n\n"
     elif doc_ids is not None and len(hits) < _SCOPE_MIN_HITS:
         # 范围内结果很少：限定结果排前面，再补充全库结果，避免误判时漏掉真正相关的文档
         seen = {h.get("chunk_id") or h.get("id") for h in hits}
-        extra = [h for h in retrieve(query)
+        extra = [h for h in retrieve(query, query_vec=query_vec)
                  if (h.get("chunk_id") or h.get("id")) not in seen]
         if extra:
             hits = hits + extra[:max(0, 8 - len(hits))]

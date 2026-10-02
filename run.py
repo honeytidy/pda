@@ -4,6 +4,7 @@
 用法：
   python run.py                  启动主窗口
   python run.py --minimized      启动后直接最小化到托盘（开机自启用）
+  python run.py --quit           让运行中的主程序正常退出（卸载程序用），最多等 10 秒
   python run.py --add <路径...>   收录文件/文件夹（右键菜单"添加到知识库助理"用）：
                                  转发给运行中的主程序；主程序没开时先最小化拉起它再转发，
                                  全程只有主程序一个进程写库
@@ -149,6 +150,23 @@ def _run_add(paths) -> int:
     return 1
 
 
+def _run_quit() -> int:
+    """请求运行中的实例正常退出并等它释放单实例锁。没有实例在跑也返回 0。"""
+    import time
+
+    from pda import ipc
+
+    if not ipc.instance_running():
+        return 0
+    ipc.send({"action": "quit"})
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not ipc.instance_running():
+            return 0
+        time.sleep(0.2)
+    return 1  # 没退出：卸载程序会退回强制结束
+
+
 def _launch_main_minimized():
     """后台启动主程序（托盘常驻，不弹主窗口）。"""
     import subprocess
@@ -166,15 +184,10 @@ def _launch_main_minimized():
 
 
 def main():
-    # 125%/150% 等分数缩放下按整数取整会导致字体模糊，PassThrough 保持原生缩放比例
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QGuiApplication
-
-    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
-
     from pda import ipc
+
+    if "--quit" in sys.argv:
+        return _run_quit()
 
     # 单实例由命名互斥体 + 数据目录文件锁保证（在 import 重依赖之前抢占）：同一时间只有一个进程
     # 打开 SQLite/chroma。拿不到锁说明已有实例（可能还在启动中，IPC 未就绪），
@@ -215,8 +228,15 @@ def main():
                 _native_message("知识库助理正在启动或无响应，请稍后再试。")
             return 0
 
+    # 125%/150% 等分数缩放下按整数取整会导致字体模糊，PassThrough 保持原生缩放比例
+    # （必须在创建 QApplication 之前设置；--add / --quit 客户端进程不加载 Qt 主界面）
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QGuiApplication
     from PySide6.QtWidgets import QApplication
 
+    QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
     # 字体规范见 pda/ui/theme.py：Segoe UI（西文/数字）+ 微软雅黑 UI（中文）

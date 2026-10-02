@@ -9,8 +9,10 @@ from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 ACCENT = "#3B6EF6"
 
 
-def make_pixmap(size: int = 64) -> QPixmap:
-    pm = QPixmap(size, size)
+def make_pixmap(size: int = 64, dpr: float = 1.0) -> QPixmap:
+    """size 为逻辑像素；dpr>1 时按物理像素绘制，高缩放屏上不发糊。"""
+    pm = QPixmap(round(size * dpr), round(size * dpr))
+    pm.setDevicePixelRatio(dpr)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)

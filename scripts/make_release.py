@@ -36,6 +36,8 @@ def model_bundled() -> bool:
     return mc.is_dir() and any(f.is_file() for f in mc.rglob("*"))
 
 
+# 右键菜单注册三处保持一致（键名 0AddToPDA、默认值、Icon、MultiSelectModel、command）：
+# 本文件的 bat（便携版，免 Python）、packaging/installer.iss、scripts/install_context_menu.py。
 # bat 统一 UTF-8（无 BOM）+ 首行 chcp 65001：不依赖系统代码页（英文系统 / "UTF-8 Beta"
 # 下 GBK bat 的中文会写成乱码）。chcp 必须在任何非 ASCII 行之前；BOM 会破坏第一行。
 INSTALL_BAT = r"""@echo off
@@ -49,9 +51,11 @@ if not exist "%EXE%" (
 )
 rem MultiSelectModel=Player：去掉多选超过 15 项隐藏菜单的限制（仍每项一个进程，各自转发给主程序后秒退）
 reg add "HKCU\Software\Classes\*\shell\0AddToPDA" /ve /d "添加到知识库助理" /f >nul
+reg add "HKCU\Software\Classes\*\shell\0AddToPDA" /v Icon /d "\"%EXE%\",0" /f >nul
 reg add "HKCU\Software\Classes\*\shell\0AddToPDA" /v MultiSelectModel /d "Player" /f >nul
 reg add "HKCU\Software\Classes\*\shell\0AddToPDA\command" /ve /d "\"%EXE%\" --add \"%%1\"" /f >nul
 reg add "HKCU\Software\Classes\Directory\shell\0AddToPDA" /ve /d "添加到知识库助理" /f >nul
+reg add "HKCU\Software\Classes\Directory\shell\0AddToPDA" /v Icon /d "\"%EXE%\",0" /f >nul
 reg add "HKCU\Software\Classes\Directory\shell\0AddToPDA" /v MultiSelectModel /d "Player" /f >nul
 reg add "HKCU\Software\Classes\Directory\shell\0AddToPDA\command" /ve /d "\"%EXE%\" --add \"%%1\"" /f >nul
 echo 完成。右键任意文件/文件夹即可看到"添加到知识库助理"。
@@ -88,16 +92,17 @@ README_TXT = """知识库助理 —— 绿色便携版
 
 
 def main():
-    assert (DIST / "pda.exe").is_file() and (DIST / "main.exe").is_file(), \
-        "dist/pda 不完整，先跑 scripts/build_exe.py"
+    if not ((DIST / "pda.exe").is_file() and (DIST / "main.exe").is_file()):
+        raise SystemExit("dist/pda 不完整，先跑 scripts/build_exe.py")
+    if not model_bundled():
+        # build_exe.py 会放入模型；缺了说明构建不完整，不能打出首次启动还要下载的包
+        raise SystemExit("dist/pda/data/model_cache 里没有语义模型，先跑 scripts/build_exe.py")
 
     (DIST / "安装右键菜单.bat").write_text(
         INSTALL_BAT, encoding="utf-8", newline="\r\n")
     (DIST / "卸载右键菜单.bat").write_text(
         UNINSTALL_BAT, encoding="utf-8", newline="\r\n")
-    # 说明文字与包内容保持一致：model_cache 有内容才说"已内置"
-    model_note = ("语义模型已内置，无需联网下载" if model_bundled()
-                  else "首次启动会联网下载约 90MB 语义模型，请保持联网")
+    model_note = "语义模型已内置，无需联网下载"
     (DIST / "使用说明.txt").write_text(
         README_TXT.replace("{model_note}", model_note),
         encoding="utf-8", newline="\r\n")

@@ -6,6 +6,7 @@ __pycache__/
 # 构建产物
 build/
 build_deps/
+build_model_cache/
 dist/
 **/bin/
 **/obj/

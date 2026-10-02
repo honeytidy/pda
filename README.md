@@ -83,19 +83,19 @@ dist/pda/
   _internal/            # Python 运行时与依赖
 ```
 
-整个 `dist/pda/` 目录可拷贝携带（**约 486MB**）——数据（`data/`：归档文件、SQLite、向量库、embedding 模型缓存）默认落在 exe 旁边。双击用 `pda.exe`；右键菜单指向 `main.exe --add`（不经启动器）。
+`dist/pda/` 解压后约 460MB（安装包经 LZMA 压缩后约 166MB）。双击用 `pda.exe`；右键菜单指向 `main.exe --add`（不经启动器）。数据位置按下文「数据目录」的规则判定：刚构建出的 `dist/pda` 里有 `data/`（build_exe.py 放入的内置模型 `data/model_cache`），因此按便携版处理，数据写在 exe 旁 `data/`。
 
 > 注意：在开发机上用过 `dist/pda` 后，`dist/pda/data/` 里就是你的真实知识库（pda.db、归档原件、笔记）。分发请用 `python scripts/make_release.py` 生成的 zip（只带 `model_cache`），不要直接拷贝/压缩 `dist/pda` 或整个项目目录。开发时建议设 `PDA_DATA_DIR` 把数据放到项目外。
 
-构建只用 `scripts/build_exe.py`。仓库根的 `pda.spec.reference` 是旧 spec 快照，仅供参考：直接 `pyinstaller` 它会整目录覆盖 `dist/pda`（含 `data/`）、不改名 main.exe、不走 `build_deps`。构建脚本在找不到 csc 时直接报错退出；回退到非 venv 解释器且其中没有 PyInstaller 时也只报错提示，不会自动往全局环境装包。
+构建只用 `scripts/build_exe.py`（不要直接跑 pyinstaller：会整目录覆盖 `dist/pda`，含 `data/`）。构建脚本在找不到 csc 时直接报错退出；项目 `.venv` 不可用时默认报错，需显式加 `--allow-conda` 才用当前解释器打包，且不会自动往全局环境装包。内置语义模型暂存在 `build_model_cache/`（缺失时先从 `dist/pda/data/model_cache` 复制，再不行用构建解释器下载），构建后放进 `dist/pda/data/model_cache`；安装包和便携 zip 缺模型时直接报错。
 
 图标（眼睛 logo = 横放的 θ）：`pda/ui/icon.py` 用 QPainter 绘制，splash/窗口/托盘共用；`scripts/make_icon.py` 渲染多尺寸 PNG 并打包为 `src/pda.ico`（纯标准库 ICO 容器），启动器经 csc `-win32icon` 嵌入、应用本体经 PyInstaller `--icon` 嵌入。改动 logo 后依次跑 `make_icon.py` → `build_exe.py`。
 
-体积构成与裁剪（1.1GB → 486MB）：MKL 换 PyPI numpy/OpenBLAS（`build_deps/` 通过 PYTHONPATH 优先，-330MB）、剔除 botocore（-114MB）与 chromadb 服务端依赖（kubernetes/uvicorn/fastapi/grpc 无关部分等）、opencv 换 headless 等。注意几个不能裁的：`opentelemetry`/`grpc`（chromadb/__init__ 模块层 import）、`posthog`（exclude 后缀匹配会误伤 chromadb.telemetry.product.posthog）、`hf_xet`（huggingface_hub 1.x 硬依赖，裁了模型下载失败）；chromadb 必须 `--collect-all`（api.rust 等懒加载子模块静态图收不全），图爆炸靠 exclude 清单切断。
+体积构成与裁剪（1.1GB → 约 460MB）：MKL 换 PyPI numpy/OpenBLAS（`build_deps/` 通过 PYTHONPATH 优先，-330MB）、剔除 botocore（-114MB）与 chromadb 服务端依赖（kubernetes/uvicorn/fastapi/grpc 无关部分等）、opencv 换 headless 等。注意几个不能裁的：`opentelemetry`/`grpc`（chromadb/__init__ 模块层 import）、`posthog`（exclude 后缀匹配会误伤 chromadb.telemetry.product.posthog）、`hf_xet`（huggingface_hub 1.x 硬依赖，裁了模型下载失败）；chromadb 必须 `--collect-all`（api.rust 等懒加载子模块静态图收不全），图爆炸靠 exclude 清单切断。
 
 - 启动体感：启动器 splash ~0.2s 出现，应用主窗口约 5-6s；IPC 类调用（`--add` 转发、二次激活）约 0.6s。
 - conda Python 的 `_ssl` 等扩展依赖 `Library\bin` 的 OpenSSL 等 DLL，构建脚本已通过 `--add-binary` 打包；若升级 Python/依赖后 exe 静默退出（exit 1 无输出），先看 exe 旁 `data/pda_error.log`（未捕获异常会记录到那里），再检查是否有新的缺失 DLL。
-- anaconda base 环境包多，构建脚本用一串 `--exclude-module` 切断 `fsspec.gui → panel → playwright` 这类无关依赖链，新增依赖时如图异常膨胀往这里加。`build_deps/` 的准备命令：`python -m pip install --target=build_deps numpy opencv-python-headless`。
+- anaconda base 环境包多，构建脚本用一串 `--exclude-module` 切断 `fsspec.gui → panel → playwright` 这类无关依赖链，新增依赖时如图异常膨胀往这里加。`build_deps/` 的准备命令（版本固定，numpy 与 requirements.txt 一致）：`python -m pip install --target=build_deps numpy==2.5.3 opencv-python-headless==5.0.0.93`。
 
 打包后要让右键菜单指向 exe，需显式指定：`python scripts/install_context_menu.py --exe dist/pda/main.exe`（脚本不自动探测构建目录，避免把开发机路径写进注册表；不带 `--exe` 时注册 pythonw + run.py）。绿色版用户直接双击包里的"安装右键菜单.bat"。
 
@@ -151,11 +151,11 @@ python scripts/restore_classic_menu.py --off   # 还原为 Win11 新版菜单
 
 ## 发布给其他人
 
-1. `python scripts/build_exe.py` 生成 `dist/pda/`
+1. `python scripts/build_exe.py` 生成 `dist/pda/`（加 `--installer` 会在最后直接调用 ISCC 出安装包）
 2. `python scripts/make_notices.py`（用打包时的同一个解释器）生成 `THIRD_PARTY_NOTICES.txt`
 3. 二选一或都做：
    - 便携 zip：`python scripts/make_release.py` → `dist/知识库助理_portable.zip`
-   - 安装包：安装 [Inno Setup 6](https://jrsoftware.org/isinfo.php) 后 `ISCC /DAppVersion=0.1.0 packaging\installer.iss` → `dist/知识库助理_安装包_0.1.0.exe`。per-user 安装到 `%LOCALAPPDATA%\Programs\PDA`，无需管理员；带开始菜单、可选桌面快捷方式与右键菜单、"设置 → 应用"里的卸载项
+   - 安装包：安装 [Inno Setup 7](https://jrsoftware.org/isinfo.php) 后 `"D:\Programs\Inno Setup 7\ISCC.exe" /DAppVersion=0.1.0 packaging\installer.iss` → `dist/知识库助理_安装包_0.1.0.exe`（版本号应与 `pda/__init__.py` 的 `__version__` 一致，`build_exe.py --installer` 会自动传入）。卸载时先用 `main.exe --quit` 让程序正常退出，超时才强制结束。per-user 安装到 `%LOCALAPPDATA%\Programs\PDA`，无需管理员；带开始菜单、可选桌面快捷方式与右键菜单、"设置 → 应用"里的卸载项
 4. 代码签名（强烈建议）：未签名的 exe 在别人电脑上会被 SmartScreen 拦截。拿到证书后先签 `dist/pda/pda.exe`、`main.exe`，再在 `installer.iss` 里启用 `SignTool=`
 5. 在干净的 Windows 沙盒里走一遍：安装/解压 → 启动 → 拖入文件 → 右键收录 → 设置 API Key 问答 → 卸载
 
