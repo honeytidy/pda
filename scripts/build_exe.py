@@ -3,8 +3,9 @@
 
 产物：dist/pda/pda.exe（启动器）+ main.exe（应用本体）。
 
-优先用项目下 .venv（干净环境）。venv 里的 PySide6 损坏（PyPI Qt 在本机
-WinError 127，原因未查明）时，需显式加 --allow-conda 才回退到当前解释器
+优先用项目下 .venv（干净环境）。venv 里的 PySide6 不可用时（本机 .venv 以 conda
+的 python 为基础，conda 把 Library\bin 加进 DLL 搜索路径，PyPI 版 Qt6Core 要的
+系统 icuuc.dll 被解析成 conda 的旧版 ICU → WinError 127），需显式加 --allow-conda 才回退到当前解释器
 （anaconda base 的 conda 版 PySide6 6.11.0 实测工作正常）：换解释器会得到
 依赖版本不同的产物，不能悄悄回退。
 

@@ -2238,8 +2238,14 @@ class WatchFoldersDialog(QDialog):
         if not self.hotkey_form.validate():  # 快捷键无效/冲突：提示显示在快捷键区，不关闭
             return
         if self._models_worker is not None:
-            self._set_llm_status("正在获取模型列表，请稍候再保存…")
-            return
+            # 点"保存"时 Key 输入框失焦会自动触发查询模型列表；以前在这里直接 return，
+            # 保存被静默拒绝、用户关窗后 Key 丢失。查询只是为了填下拉框，下面的验证
+            # 会自己选定模型：放弃这次查询，继续保存
+            _detach_worker(self._models_worker)
+            self._models_worker = None
+            self._fetched_for = None
+            self.refresh_models_btn.setEnabled(True)
+            self.refresh_models_btn.setText("获取可用模型")
         inputs = self._llm_inputs()
         pid, key, base_url, model = inputs
         if inputs == self._llm_initial:
