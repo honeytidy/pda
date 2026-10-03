@@ -4,6 +4,7 @@
 按键可在界面里自定义（config.HOTKEY_ACTIONS / get_hotkeys），默认：
 - Ctrl+Shift+Q：剪贴板存笔记（triggered）
 - Ctrl+Shift+A：收录资源管理器选中项（selection_ingest_requested）
+- Ctrl+Alt+Space：呼出/隐藏主界面（show_requested）
 
 改键时主窗口停掉旧线程、按新配置起一个新线程（RegisterHotKey 只在注册它的线程里有效）。
 信号经 QueuedConnection 到 GUI 线程处理。注册失败（被占用等）发 failed 信号，
@@ -28,7 +29,7 @@ WM_QUIT = 0x0012
 ERROR_HOTKEY_ALREADY_REGISTERED = 1409
 
 # 动作 -> 热键 id（WM_HOTKEY 的 wParam）
-_ACTION_IDS = {"clipboard": 1, "selection": 2}
+_ACTION_IDS = {"clipboard": 1, "selection": 2, "show": 3}
 _PROBE_ID = 0xBF00  # is_available() 试注册用，不与正式 id 冲突
 
 # Qt 键 -> Win32 虚拟键码（字母/数字的 Qt 值就是 ASCII，与 VK 相同，单独处理）
@@ -126,11 +127,12 @@ class _MSG(ctypes.Structure):
 class HotkeyThread(QThread):
     """RegisterHotKey 只在注册它的线程里有效，故注册与消息循环都放在 run()。
 
-    bindings：{"clipboard": "Ctrl+Shift+Q", "selection": "Ctrl+Shift+A"}，值为空表示不启用。
+    bindings：{"clipboard": "Ctrl+Shift+Q", "selection": "Ctrl+Shift+A", "show": "Ctrl+Alt+Space"}，值为空表示不启用。
     """
 
     triggered = Signal()                       # 剪贴板存笔记
     selection_ingest_requested = Signal()      # 收录资源管理器选中项
+    show_requested = Signal()                  # 呼出/隐藏主界面
     failed = Signal(str)
 
     def __init__(self, bindings: dict, parent=None):
@@ -175,6 +177,8 @@ class HotkeyThread(QThread):
                     self.triggered.emit()
                 elif msg.wParam == _ACTION_IDS["selection"]:
                     self.selection_ingest_requested.emit()
+                elif msg.wParam == _ACTION_IDS["show"]:
+                    self.show_requested.emit()
         finally:
             for hotkey_id in registered:
                 user32.UnregisterHotKey(None, hotkey_id)

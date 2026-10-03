@@ -271,6 +271,7 @@ def save_auto_model(model: str):
 # ---------- 全局快捷键 ----------
 # 动作 id -> (默认按键, 说明)。按键用 Qt PortableText 格式（"Ctrl+Shift+Q"），空字符串 = 不启用
 HOTKEY_ACTIONS = {
+    "show": ("Ctrl+Alt+Space", "呼出/隐藏主界面"),
     "clipboard": ("Ctrl+Shift+Q", "保存剪贴板为笔记"),
     "selection": ("Ctrl+Shift+A", "收录资源管理器选中项"),
 }

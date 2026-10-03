@@ -1022,6 +1022,9 @@ class MainWindow(QMainWindow):
         clip = hotkey.display(self._hotkeys.get("clipboard", ""))
         sel = hotkey.display(self._hotkeys.get("selection", ""))
         tips = ["输入问题，回车发送", "拖入或粘贴文件收录"]
+        show = hotkey.display(self._hotkeys.get("show", ""))
+        if show:
+            tips.append(f"{show} 随时呼出")
         if sel:
             tips.append(f"{sel} 收录选中项")
         if clip:
@@ -1378,6 +1381,7 @@ class MainWindow(QMainWindow):
         self.hotkey = hotkey.HotkeyThread(self._hotkeys, self)
         self.hotkey.triggered.connect(self._on_hotkey)
         self.hotkey.selection_ingest_requested.connect(self._on_selection_ingest)
+        self.hotkey.show_requested.connect(self._toggle_from_hotkey)
         # 注册失败要让用户看得到（状态栏消息很快被覆盖，开机自启时更看不到）
         self.hotkey.failed.connect(self._on_hotkey_failed)
         self.hotkey.start()
@@ -1685,6 +1689,25 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    def _toggle_from_hotkey(self):
+        """全局快捷键（默认 Ctrl+Alt+Space）：呼出主界面并聚焦输入框；已在前台时再按一次隐藏。"""
+        if self.isVisible() and not self.isMinimized() and self.isActiveWindow():
+            if self.tray is not None:
+                self.hide()
+            else:
+                self.showMinimized()
+            return
+        self._restore_from_tray()
+        # 收到 WM_HOTKEY 的进程有权抢前台；Qt 的 activateWindow 有时只闪任务栏，再直接调一次 Win32
+        try:
+            import ctypes
+            ctypes.windll.user32.SetForegroundWindow(int(self.winId()))
+        except Exception:
+            pass
+        if self.input.isEnabled():
+            self.input.setFocus(Qt.ShortcutFocusReason)
+            self.input.selectAll()  # 上次没发出去的问题保留，直接打字即覆盖
+
     def start_in_tray(self):
         """开机自启（--minimized）：不显示主窗口，只留托盘图标。"""
         self._tray_notified = True  # 不弹"已最小化到托盘"
@@ -1879,7 +1902,7 @@ class HotkeyDialog(QDialog):
         layout.setContentsMargins(20, 18, 20, 16)
         layout.setSpacing(12)
 
-        tip = QLabel("在任何程序里按下这些快捷键都能直接收录。")
+        tip = QLabel("在任何程序里按下这些快捷键都能直接呼出界面或收录。")
         tip.setObjectName("dialogTip")
         tip.setWordWrap(True)
         layout.addWidget(tip)
@@ -2053,7 +2076,7 @@ class WatchFoldersDialog(QDialog):
         layout.addWidget(privacy)
 
         # ---------- 全局快捷键：和 API Key 一样在这里配置 ----------
-        hk_title = QLabel("全局快捷键（在任何程序里按下都能直接收录）：")
+        hk_title = QLabel("全局快捷键（在任何程序里按下都能直接呼出界面或收录）：")
         hk_title.setWordWrap(True)
         hk_title.setStyleSheet(f"color: {TEXT}; font-size: 13px; margin-top: 6px;")
         layout.addWidget(hk_title)
