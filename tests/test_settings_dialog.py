@@ -26,7 +26,7 @@ def test_save_while_model_list_fetching(app, monkeypatch):
 
     def slow_list(*a, **k):
         time.sleep(1.0)
-        return ["kimi-k2-0905-preview"]
+        return ["kimi-k3"]
 
     monkeypatch.setattr(llm, "list_chat_models", slow_list)
     monkeypatch.setattr(llm, "verify_and_pick_model",
@@ -42,7 +42,8 @@ def test_save_while_model_list_fetching(app, monkeypatch):
 
     values = dlg.llm_values()
     assert values["api_key"] == "sk-testkey-123"
-    assert values["model"] == "kimi-k2-0905-preview"  # "自动选择" 由验证选定模型
+    assert values["model"] == "kimi-k3"  # "自动" 由验证选出当前最新模型
+    assert values["model_auto"] is True  # 保存的是"自动"，不是固定死这个模型名
     config.save_llm_config(**values)
     try:
         assert llm.has_llm()

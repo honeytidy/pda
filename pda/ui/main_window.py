@@ -1329,7 +1329,7 @@ class MainWindow(QMainWindow):
         if llm_values["api_key"] is None:  # AI 设置没改：沿用已保存的值，只可能改了自动标签开关
             llm_values.update(old_llm)
         llm_changed = (
-            any(llm_values[k] != old_llm[k] for k in ("api_key", "base_url", "model"))
+            any(llm_values[k] != old_llm[k] for k in ("api_key", "base_url", "model", "model_auto"))
             or llm_values["auto_tags"] != config.auto_tags_enabled()
         )
         if llm_changed:
@@ -2019,7 +2019,8 @@ class WatchFoldersDialog(QDialog):
             saved_pid = llm.CUSTOM_PROVIDER
             self.base_url_edit.setText(llm_cfg["base_url"])
         self._select_provider(saved_pid)
-        current = llm_cfg["model"] if llm_cfg["api_key"] else ""
+        # 自动模式：下拉框停在"自动"，状态行显示上次自动选定的模型
+        current = llm_cfg["model"] if llm_cfg["api_key"] and not llm_cfg["model_auto"] else ""
         self._set_advanced(saved_pid == llm.CUSTOM_PROVIDER)
         self._on_provider_changed()
         self._set_model_text(current)
@@ -2028,7 +2029,11 @@ class WatchFoldersDialog(QDialog):
         # Key 填完（失焦/回车）自动拉取账户可用模型，用户不需要知道模型名
         self.api_key_edit.editingFinished.connect(lambda: self._fetch_models(auto=True))
         if llm_cfg["api_key"]:
-            self._set_llm_status(f"已配置（模型：{current or '默认'}）")
+            if llm_cfg["model_auto"]:
+                picked = llm_cfg["model"]
+                self._set_llm_status(f"已配置（自动使用最新模型{f'：{picked}' if picked else ''}）")
+            else:
+                self._set_llm_status(f"已配置（模型：{current}）")
         # 未改动时保存不再重新验证
         self._llm_initial = self._llm_inputs()
         self._llm_result = None
@@ -2115,7 +2120,7 @@ class WatchFoldersDialog(QDialog):
         self.llm_status.setStyleSheet(f"color: {color}; font-size: 12px;")
         self.llm_status.setText(text)
 
-    _AUTO_MODEL = "自动选择（推荐）"
+    _AUTO_MODEL = "自动（始终用最新模型）"
 
     def _open_key_page(self):
         p = llm.get_provider(self._provider_id())
@@ -2213,7 +2218,10 @@ class WatchFoldersDialog(QDialog):
             return
         if models:
             self._fill_models(models)
-            self._set_llm_status(f"已获取 {len(models)} 个可用模型，保持「自动选择」即可，也可以指定一个")
+            self._set_llm_status(
+                f"已获取 {len(models)} 个可用模型，最新的是 {models[0]}；"
+                "选「自动」会一直跟随最新模型，也可以固定一个"
+            )
         elif not auto:
             self._set_llm_status("该服务商不提供模型列表，可从下拉框选预设模型或直接输入模型名")
 
@@ -2253,7 +2261,8 @@ class WatchFoldersDialog(QDialog):
             super().accept()
             return
         if not key:
-            self._llm_result = {"api_key": "", "base_url": "", "model": ""}  # 清空 = 关闭智能回答
+            self._llm_result = {"api_key": "", "base_url": "", "model": "",
+                                "model_auto": True}  # 清空 = 关闭智能回答
             super().accept()
             return
         p = llm.get_provider(pid)
@@ -2280,7 +2289,9 @@ class WatchFoldersDialog(QDialog):
         self._verifying = False
         self.ok_btn.setEnabled(True)
         if ok:
-            self._llm_result = {"api_key": key, "base_url": base_url, "model": value}
+            # 没指定模型 = 自动：value 只是本次选出的最新模型，之后每次启动会重新选
+            self._llm_result = {"api_key": key, "base_url": base_url, "model": value,
+                                "model_auto": not model}
             self._set_llm_status(f"验证通过，使用模型 {value}")
             super().accept()
             return
@@ -2292,7 +2303,8 @@ class WatchFoldersDialog(QDialog):
             if reply == QMessageBox.Yes:
                 p = llm.get_provider(self._provider_id())
                 fallback = model or (p["models"][0] if p else "")
-                self._llm_result = {"api_key": key, "base_url": base_url, "model": fallback}
+                self._llm_result = {"api_key": key, "base_url": base_url, "model": fallback,
+                                    "model_auto": not model}
                 super().accept()
                 return
         self._set_llm_status(value, error=True)
@@ -2310,7 +2322,8 @@ class WatchFoldersDialog(QDialog):
 
     def llm_values(self):
         """验证通过后的 {api_key, base_url, model, auto_tags}；AI 设置未改动时 api_key 等为 None。"""
-        values = dict(self._llm_result or {"api_key": None, "base_url": None, "model": None})
+        values = dict(self._llm_result or {"api_key": None, "base_url": None, "model": None,
+                                           "model_auto": None})
         values["auto_tags"] = self.auto_tags_cb.isChecked()
         return values
 

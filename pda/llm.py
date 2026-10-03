@@ -34,13 +34,15 @@ def has_llm() -> bool:
 
 
 # ---------- 服务商预设：用户只填 Key，接口地址与模型自动确定 ----------
-# models 是偏好顺序：验证时从该服务商 /models 返回的列表里挑第一个存在的（模型会上下架，
-# 不硬编码单一名字）；/models 不可用时用第一个。
+# 模型"自动"：从该服务商 /models 返回的账户可用列表里选最新的通用对话模型（按发布时间，
+# 见 pick_latest_model），模型上下架不用改代码。models 只在该服务商不提供 /models 时兜底，
+# 按顺序用第一个。
 # key_url：该服务商创建/查看 API Key 的控制台页面（设置界面"获取 API Key"按钮打开）
 PROVIDERS = [
     {"id": "moonshot", "name": "Kimi（月之暗面）", "base_url": "https://api.moonshot.cn/v1",
      "key_url": "https://platform.kimi.com/console/api-keys",
-     "models": ["kimi-k2-0905-preview", "kimi-k2-turbo-preview", "kimi-latest", "moonshot-v1-32k", "moonshot-v1-8k"]},
+     # kimi-k2 系列 2026-05-25 下线，moonshot-v1 / kimi-k2.5 2026-08-31 下线
+     "models": ["kimi-k3", "kimi-k2.6"]},
     {"id": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1",
      "key_url": "https://platform.deepseek.com/api_keys",
      "models": ["deepseek-chat"]},
@@ -110,8 +112,42 @@ _NON_CHAT_MARKERS = ("embed", "tts", "whisper", "dall-e", "audio", "speech", "tr
                      "moderation", "rerank", "bge-", "image", "cogview", "cogvideo", "wanx", "sora")
 
 
+# 能对话但不适合做通用问答的专用变体："自动"选最新模型时跳过（下拉框里仍可手动选）
+_SPECIALIZED_MARKERS = ("code", "coder", "vision", "-vl", "ocr", "math", "search", "realtime",
+                        "preview", "highspeed", "thinking", "reason")
+
+
+def _version_key(model_id: str) -> tuple:
+    """模型名里的数字当版本号比较（kimi-k3 > kimi-k2.6、glm-4-plus > glm-4）。"""
+    return tuple(int(n) for n in re.findall(r"\d+", model_id))
+
+
+def _newest_first(models: list) -> list:
+    return sorted(models, key=lambda ic: (ic[1] or 0, _version_key(ic[0]), ic[0]), reverse=True)
+
+
+def pick_latest_model(models: list) -> str:
+    """models: [(id, created)]。选最新的通用对话模型：先按发布时间，再按名字里的版本号。
+
+    没有通用模型时退回在所有对话模型里选。列表为空返回 ""。
+    """
+    chat = [(i, c) for i, c in models if not any(m in i.lower() for m in _NON_CHAT_MARKERS)]
+    general = [(i, c) for i, c in chat if not any(m in i.lower() for m in _SPECIALIZED_MARKERS)]
+    pool = general or chat
+    return _newest_first(pool)[0][0] if pool else ""
+
+
+def _list_models(client) -> list:
+    """[(id, created)]；服务商不支持 /models 时抛 openai.NotFoundError / BadRequestError。"""
+    out = []
+    for m in client.models.list():
+        created = getattr(m, "created", 0)
+        out.append((m.id, created if isinstance(created, (int, float)) else 0))
+    return out
+
+
 def list_chat_models(api_key: str, base_url: str, prefs: list = (), timeout: float = 12.0) -> list:
-    """取该服务商账户下可用的对话模型（设置界面下拉框用）。偏好模型排前面，其余按名字排序。
+    """取该服务商账户下可用的对话模型（设置界面下拉框用），最新的排前面。
 
     该服务商不支持 /models 时返回 []（界面退回预设列表 + 手动输入）。失败抛 LlmSetupError。
     """
@@ -119,7 +155,7 @@ def list_chat_models(api_key: str, base_url: str, prefs: list = (), timeout: flo
 
     client = _openai_client(api_key=api_key, base_url=base_url, max_retries=0, timeout=timeout)
     try:
-        ids = {m.id for m in client.models.list()}
+        models = _list_models(client)
     except (openai.NotFoundError, openai.BadRequestError):
         return []
     except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
@@ -128,17 +164,17 @@ def list_chat_models(api_key: str, base_url: str, prefs: list = (), timeout: flo
         raise LlmSetupError("连不上服务商，无法获取模型列表", offline=True) from e
     except Exception as e:
         raise LlmSetupError(f"获取模型列表失败：{e}") from e
-    chat_ids = [i for i in ids if not any(m in i.lower() for m in _NON_CHAT_MARKERS)]
-    head = [p for p in prefs if p in chat_ids]
-    return head + sorted(i for i in chat_ids if i not in head)
+    chat = [(i, c) for i, c in models if not any(m in i.lower() for m in _NON_CHAT_MARKERS)]
+    return [i for i, _ in _newest_first(chat)]
 
 
 def verify_and_pick_model(api_key: str, base_url: str, model_prefs: list,
                           model_override: str = "", timeout: float = 12.0) -> str:
     """用 Key 调一次该服务商接口，确认可用并返回要使用的模型名。失败抛 LlmSetupError。
 
-    只向用户选定的这一家发请求。优先调 /models（不消耗额度），拿到列表后按偏好挑模型；
-    该服务商不支持 /models 时，用偏好模型发一条 1 token 的对话来验证。
+    只向用户选定的这一家发请求。优先调 /models（不消耗额度）：指定了模型就确认它在列表里，
+    没指定（"自动"）就选列表里最新的通用对话模型；该服务商不支持 /models 时，
+    用指定模型或预设第一个发一条 1 token 的对话来验证。
     """
     import openai
 
@@ -161,8 +197,10 @@ def verify_and_pick_model(api_key: str, base_url: str, model_prefs: list,
         return LlmSetupError(f"验证失败：{e}")
 
     ids = None
+    models = []
     try:
-        ids = [m.id for m in client.models.list()]
+        models = _list_models(client)
+        ids = [i for i, _ in models]
     except (openai.NotFoundError, openai.BadRequestError):
         ids = None  # 该服务商没有 /models：改用对话验证
     except (openai.AuthenticationError, openai.PermissionDeniedError) as e:
@@ -179,15 +217,9 @@ def verify_and_pick_model(api_key: str, base_url: str, model_prefs: list,
             if model_override not in ids:
                 raise LlmSetupError(f"该账户下没有模型 {model_override}")
             return model_override
-        for pref in prefs:
-            if pref in ids:
-                return pref
-        for pref in prefs:  # 带日期后缀的版本名，例如 claude-haiku-4-5-20251001
-            hit = next((i for i in ids if i.startswith(pref)), None)
-            if hit:
-                return hit
-        if not prefs:
-            return ids[0]  # 自定义接口且没指定模型：用列表第一个
+        latest = pick_latest_model(models)
+        if latest:
+            return latest
 
     if not prefs:
         raise LlmSetupError("无法获取模型列表，请在「模型」里填写模型名")
@@ -224,9 +256,66 @@ def _is_temperature_rejected(e) -> bool:
     return isinstance(e, openai.BadRequestError) and "temperature" in str(e).lower()
 
 
+# "自动"模式本进程内解析出的模型：(api_key, base_url) -> 模型名。每次启动后首次调用时
+# 按账户当前的 /models 重新选一次；调用时模型已下线也会重选
+_auto_models = {}
+_auto_lock = threading.Lock()
+
+
+def _fallback_model(base_url: str) -> str:
+    p = get_provider(provider_for_base_url(base_url) or "")
+    return p["models"][0] if p else ""
+
+
+def _resolve_model(cfg: dict, refresh: bool = False) -> str:
+    if not cfg.get("model_auto"):
+        return cfg["model"] or _fallback_model(cfg["base_url"])
+    key = (cfg["api_key"], cfg["base_url"])
+    with _auto_lock:
+        if not refresh and key in _auto_models:
+            return _auto_models[key]
+    model = ""
+    try:
+        model = pick_latest_model(_list_models(_get_client(cfg).with_options(timeout=12.0)))
+    except Exception:
+        _log.warning("自动选择模型：获取模型列表失败，沿用上次的模型", exc_info=True)
+    if model:
+        try:
+            config.save_auto_model(model)  # 设置界面回显"当前使用的模型"
+        except Exception:
+            _log.warning("记录自动选择的模型失败", exc_info=True)
+    else:
+        model = cfg["model"] or _fallback_model(cfg["base_url"])
+    with _auto_lock:
+        _auto_models[key] = model
+    return model
+
+
+def _is_model_gone(e) -> bool:
+    import openai
+
+    if isinstance(e, openai.NotFoundError):
+        return True
+    text = str(e).lower()
+    return isinstance(e, (openai.BadRequestError, openai.PermissionDeniedError)) and "model" in text
+
+
 def chat(messages: list, temperature: float = 0.3, timeout: float = _CHAT_TIMEOUT) -> str:
     cfg = config.get_llm_config()
-    model = cfg["model"]
+    model = _resolve_model(cfg)
+    try:
+        return _chat_with(cfg, model, messages, temperature, timeout)
+    except Exception as e:
+        if not (cfg.get("model_auto") and _is_model_gone(e)):
+            raise
+        # 自动模式下模型被下线：按账户最新列表重选一次再试
+        newer = _resolve_model(cfg, refresh=True)
+        if newer == model:
+            raise
+        return _chat_with(cfg, newer, messages, temperature, timeout)
+
+
+def _chat_with(cfg: dict, model: str, messages: list, temperature: float, timeout: float) -> str:
     kwargs = dict(model=model, messages=messages, timeout=timeout)
     client = _get_client(cfg)
     if model not in _NO_TEMPERATURE_MODELS:

@@ -65,7 +65,6 @@ ERROR_LOG = DATA_DIR / "pda_error.log"
 CONFIG_PATH = Path(os.environ.get("PDA_CONFIG_PATH", APP_HOME / "pda_config.json"))
 
 DEFAULT_BASE_URL = "https://api.moonshot.cn/v1"
-DEFAULT_MODEL = "kimi-k2-0905-preview"
 
 
 def ensure_dirs():
@@ -163,15 +162,32 @@ def _file_api_key(cfg: dict) -> str | None:
     return _decrypt_secret(cfg.get("api_key_enc")) or cfg.get("api_key") or None
 
 
+def _model_auto(file_cfg: dict) -> bool:
+    """模型是否"自动"（每次启动后首次调用时选账户下最新的模型）。
+
+    老版本没有 model_auto 键：那时界面默认就是"自动"，存下的 model 只是当时挑中的名字
+    （常常已经下线），按自动处理；没存模型名也只能自动。
+    """
+    if "model_auto" in file_cfg:
+        return _parse_bool(file_cfg.get("model_auto"), default=True) or not file_cfg.get("model")
+    return True
+
+
 def get_llm_config() -> dict:
-    """返回 {api_key, base_url, model}；api_key 可能为 None。"""
+    """返回 {api_key, base_url, model, model_auto}；api_key 可能为 None。
+
+    model_auto=True 时 model 只是上次自动选定的名字（可能为空），实际用哪个由 llm 模块解析。
+    环境变量 PDA_MODEL 指定了模型就固定用它。
+    """
     file_cfg = _read_config_file()
+    env_model = os.environ.get("PDA_MODEL")
     return {
         "api_key": os.environ.get("PDA_API_KEY") or _file_api_key(file_cfg),
         "base_url": os.environ.get("PDA_BASE_URL")
         or file_cfg.get("base_url")
         or DEFAULT_BASE_URL,
-        "model": os.environ.get("PDA_MODEL") or file_cfg.get("model") or DEFAULT_MODEL,
+        "model": env_model or file_cfg.get("model") or "",
+        "model_auto": not env_model and _model_auto(file_cfg),
     }
 
 
@@ -218,6 +234,7 @@ def get_llm_file_config() -> dict:
         "api_key": _file_api_key(cfg) or "",
         "base_url": cfg.get("base_url") or "",
         "model": cfg.get("model") or "",
+        "model_auto": _model_auto(cfg),
     }
 
 
@@ -226,8 +243,12 @@ def llm_env_overrides() -> list:
     return [n for n in ("PDA_API_KEY", "PDA_BASE_URL", "PDA_MODEL") if os.environ.get(n)]
 
 
-def save_llm_config(api_key: str, base_url: str, model: str, auto_tags: bool):
-    """空字符串 = 删除该键（回落到默认值 / 无 key 模式）。Key 尽量 DPAPI 加密保存。"""
+def save_llm_config(api_key: str, base_url: str, model: str, auto_tags: bool,
+                    model_auto: bool = False):
+    """空字符串 = 删除该键（回落到默认值 / 无 key 模式）。Key 尽量 DPAPI 加密保存。
+
+    model_auto=True 时 model 是本次自动选定的名字（只作记录和回显）。
+    """
     api_key = api_key.strip()
     enc = _encrypt_secret(api_key) if api_key else None
     _update_config_file(
@@ -235,8 +256,16 @@ def save_llm_config(api_key: str, base_url: str, model: str, auto_tags: bool):
         api_key=(api_key or None) if enc is None else None,
         base_url=base_url.strip() or None,
         model=model.strip() or None,
+        model_auto=bool(model_auto) or not model.strip(),
         auto_tags=bool(auto_tags),
     )
+
+
+def save_auto_model(model: str):
+    """自动模式下重新选定了模型：只更新记录的模型名（用户改成固定模型后不再覆盖）。"""
+    cfg = _read_config_file()
+    if _model_auto(cfg) and cfg.get("model") != model:
+        _update_config_file(model=model or None, model_auto=True)
 
 
 # ---------- 全局快捷键 ----------
