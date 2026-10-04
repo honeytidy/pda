@@ -1105,11 +1105,20 @@ class MainWindow(QMainWindow):
         self._add_row(bubble, "right")
 
     def _add_system_notice(self, text):
-        label = QLabel(escape(text).replace("\n", "　"))
+        text = text.replace("\n", "　")
+        label = QLabel(escape(text))
         label.setTextFormat(Qt.RichText)
         label.setObjectName("systemNotice")
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignCenter)
+        label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Minimum)
+        # 同气泡：wordwrap QLabel 的 sizeHint 会把长消息挤成小方块，按文字宽度估算，
+        # 钳制到视口 82%（随窗口缩放重排）；12px 字号 + 左右 padding 12*2
+        font = label.font()
+        font.setPixelSize(12)
+        est = QFontMetrics(font).horizontalAdvance(text) + 24 + 6
+        self._bubble_labels.append((label, est))
+        self._fit_bubble_label(label, est)
         self._add_row(label, "center")
         return label
 

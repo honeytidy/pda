@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-"""极简 toast 通知：屏幕中央深色浮条，淡出关闭，多条向下堆叠。
+"""极简 toast 通知：屏幕中央白色浮条（细边框），淡出关闭，多条向下堆叠。
 
 三种状态：
 - 进度态（pending=True）：图标 "…"，30 秒兜底超时（防卡死残留），
   通过 update() 就地切换为结果态
-- 成功 / 失败：图标 ✓ 蓝 / ✘ 红，2.5 秒后淡出
+- 成功 / 失败：图标 ✓ 绿 / ✘ 红，2.5 秒后淡出
 
 非模态纯展示：FramelessWindowHint | Tool | WindowStaysOnTopHint +
 WA_ShowWithoutActivating（不抢焦点、不出现在任务栏），绝不阻塞主线程。
@@ -15,7 +15,8 @@ from PySide6.QtWidgets import QApplication, QFrame, QHBoxLayout, QLabel, QWidget
 
 TOAST_QSS = """
 QFrame#toastFrame {
-    background: #323232;
+    background: #FFFFFF;
+    border: 1px solid #E5E6EB;
     border-radius: 8px;
 }
 QLabel#toastIcon {
@@ -23,15 +24,15 @@ QLabel#toastIcon {
     background: transparent;
 }
 QLabel#toastText {
-    color: #FFFFFF;
+    color: #1F2329;
     font-size: 13px;
     background: transparent;
 }
 """
 
-ACCENT = "#3B6EF6"
-FAIL_COLOR = "#F5483B"
-PENDING_COLOR = "#C9CDD4"
+SUCCESS_COLOR = "#00B42A"
+FAIL_COLOR = "#F53F3F"
+PENDING_COLOR = "#3B6EF6"
 
 
 class Toast(QWidget):
@@ -39,7 +40,6 @@ class Toast(QWidget):
 
     HEIGHT = 38
     MAX_WIDTH = 420
-    MARGIN = 16
     GAP = 8
     DISPLAY_MS = 2500
     PENDING_MS = 30_000  # 进度态兜底超时
@@ -98,7 +98,7 @@ class Toast(QWidget):
             color = PENDING_COLOR
         else:
             self._icon.setText("✓" if success else "✘")
-            color = ACCENT if success else FAIL_COLOR
+            color = SUCCESS_COLOR if success else FAIL_COLOR
         self._icon.setStyleSheet(f"color: {color};")
 
         max_text_w = self.MAX_WIDTH - 12 - 14 - 18 - 8
