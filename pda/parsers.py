@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""按扩展名提取纯文本：txt/md/pdf/docx/xlsx/xlsm/pptx/图片(OCR)。
+"""按扩展名提取纯文本：txt/md/pdf/docx/xlsx/xlsm/xls/pptx/图片(OCR)。
 
 不限制文件类型：未知扩展名按纯文本尝试（UTF-8/GBK 嗅探）；提取不出文字的
 二进制文件抛 BinaryFileError，由 ingest 归档原件并按文件名建索引。
@@ -11,7 +11,7 @@ import os
 
 SUPPORTED_EXTS = {
     ".txt", ".md", ".pdf", ".docx",
-    ".xlsx", ".xlsm",
+    ".xlsx", ".xlsm", ".xls",
     ".pptx",
     ".png", ".jpg", ".jpeg", ".bmp", ".webp",
 }
@@ -47,6 +47,8 @@ def extract_text(path: str) -> str:
         return _read_docx(path)
     if ext in (".xlsx", ".xlsm"):
         return _read_xlsx(path)
+    if ext == ".xls":
+        return _read_xls(path)
     if ext == ".pptx":
         return _read_pptx(path)
     if ext in IMAGE_EXTS:
@@ -161,6 +163,43 @@ def _read_xlsx(path: str) -> str:
                 parts.append("\n".join(rows))
     finally:
         wb.close()
+    text = "\n\n".join(parts).strip()
+    if not text:
+        raise ParseError("表格中没有可提取的文本")
+    return text
+
+
+def _read_xls(path: str) -> str:
+    """老式 Excel 97-2003（.xls）：xlrd 2.x 只读 .xls，输出格式与 _read_xlsx 一致。"""
+    import xlrd
+
+    try:
+        wb = xlrd.open_workbook(path, on_demand=True)
+    except xlrd.XLRDError as e:  # 加密、损坏，或其实是改了扩展名的 xlsx
+        raise ParseError(f"无法读取 xls 文件：{e}") from e
+    parts = []
+    try:
+        for sheet in wb.sheets():
+            rows = []
+            for r in range(sheet.nrows):
+                cells = []
+                for c in sheet.row(r):
+                    v = c.value
+                    if c.ctype == xlrd.XL_CELL_NUMBER and v == int(v):
+                        v = int(v)  # xls 数字一律存成 float，整数去掉 ".0"
+                    elif c.ctype == xlrd.XL_CELL_DATE:
+                        v = xlrd.xldate_as_datetime(v, wb.datemode)
+                    elif c.ctype in (xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK, xlrd.XL_CELL_ERROR):
+                        continue
+                    s = str(v).strip()
+                    if s:
+                        cells.append(s)
+                if cells:
+                    rows.append(f"{sheet.name} | {' | '.join(cells)}")
+            if rows:
+                parts.append("\n".join(rows))
+    finally:
+        wb.release_resources()
     text = "\n\n".join(parts).strip()
     if not text:
         raise ParseError("表格中没有可提取的文本")

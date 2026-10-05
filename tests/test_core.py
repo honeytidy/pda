@@ -245,3 +245,32 @@ def test_answer_unrelated_question_returns_nothing(monkeypatch):
                         lambda *a, **k: [{"chunk_id": 1, "text": "x", "distance": 0.8}])
     monkeypatch.setattr(db, "fts_search", lambda *a, **k: [])
     assert qa.answer("今天天气怎么样")["sources"] == []
+
+
+def test_read_xls(tmp_path):
+    xlwt = pytest.importorskip("xlwt")  # 只用来生成测试文件，不是运行依赖
+    import datetime
+
+    from pda import parsers
+
+    wb = xlwt.Workbook()
+    ws = wb.add_sheet("销售")
+    for c, v in enumerate(["地区", "销售额", "日期"]):
+        ws.write(0, c, v)
+    ws.write(1, 0, "华东")
+    ws.write(1, 1, 1200)
+    ws.write(1, 2, datetime.datetime(2025, 9, 30), xlwt.easyxf(num_format_str="YYYY-MM-DD"))
+    f = tmp_path / "老表格.xls"
+    wb.save(str(f))
+    text = parsers.extract_text(str(f))
+    assert "销售 | 地区 | 销售额 | 日期" in text
+    assert "销售 | 华东 | 1200 | 2025-09-30" in text
+
+
+def test_read_xls_rejects_fake(tmp_path):
+    from pda import parsers
+
+    f = tmp_path / "假的.xls"
+    f.write_bytes(b"not an excel file")
+    with pytest.raises(parsers.ParseError):
+        parsers.extract_text(str(f))

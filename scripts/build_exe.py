@@ -33,7 +33,7 @@ PYINSTALLER_REQ = "pyinstaller==6.22.3"
 
 HIDDEN = [
     # 函数内延迟 import 的模块，PyInstaller 静态分析找不到
-    "pypdf", "docx", "openpyxl", "pptx", "fastembed", "onnxruntime",
+    "pypdf", "docx", "openpyxl", "xlrd", "pptx", "fastembed", "onnxruntime",
     "rapidocr_onnxruntime", "cv2", "watchdog", "readability", "lxml",
     "win32com", "pythoncom", "requests",
 ]
