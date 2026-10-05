@@ -239,7 +239,7 @@ def main():
     )
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName(APP_TITLE)
-    # 字体规范见 pda/ui/theme.py：Segoe UI（西文/数字）+ 微软雅黑 UI（中文）
+    # 字体规范见 pda/ui/theme.py：Times New Roman（西文/数字）+ 宋体（中文）
     from pda.ui.theme import app_font
 
     app.setFont(app_font())

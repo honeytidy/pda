@@ -91,7 +91,7 @@ QFrame#userBubble {{
 }}
 QFrame#userBubble QLabel {{
     color: #FFFFFF;
-    font-size: 14px;
+    font-size: 13px;
     background: transparent;
 }}
 QFrame#assistantBubble {{
@@ -101,12 +101,12 @@ QFrame#assistantBubble {{
 }}
 QFrame#assistantBubble QLabel {{
     color: {TEXT};
-    font-size: 14px;
+    font-size: 13px;
     background: transparent;
 }}
 QFrame#assistantBubble QLabel.sourceLink {{
     color: {ACCENT};
-    font-size: 13px;
+    font-size: 12px;
 }}
 QLabel#systemNotice {{
     color: {SUBTLE};
@@ -121,13 +121,13 @@ QWidget#welcomePanel {{
 }}
 QLabel#welcomeTitle {{
     color: {TEXT};
-    font-size: 22px;
+    font-size: 21px;
     font-weight: 600;
     background: transparent;
 }}
 QLabel#welcomeSubtitle {{
     color: {SUBTLE};
-    font-size: 13px;
+    font-size: 12px;
     background: transparent;
 }}
 QFrame#hintCard {{
@@ -140,7 +140,7 @@ QFrame#hintCard[hover="true"] {{
 }}
 QLabel#hintCardTitle {{
     color: {TEXT};
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     background: transparent;
 }}
@@ -156,19 +156,19 @@ QFrame#hotkeyStrip {{
 }}
 QLabel#hotkeyStripTitle {{
     color: {TEXT};
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
     background: transparent;
 }}
 QLabel#hotkeyStripText {{
-    font-size: 13px;
+    font-size: 12px;
     background: transparent;
 }}
 QPushButton#linkButton {{
     background: transparent;
     border: none;
     color: {ACCENT};
-    font-size: 13px;
+    font-size: 12px;
     padding: 2px 4px;
 }}
 QPushButton#linkButton:hover {{
@@ -187,7 +187,7 @@ QFrame#inputCard[focused="true"] {{
 QPlainTextEdit#chatInput {{
     border: none;
     background: transparent;
-    font-size: 14px;
+    font-size: 13px;
     color: {TEXT};
     padding: 4px;
 }}
@@ -196,7 +196,7 @@ QPushButton#sendButton {{
     color: #FFFFFF;
     border: none;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 13px;
     padding: 0 20px;
 }}
 QPushButton#sendButton:hover {{
@@ -230,7 +230,7 @@ QFrame#docCard[hover="true"] {{
 }}
 QLabel#docTitle {{
     color: {TEXT};
-    font-size: 14px;
+    font-size: 13px;
     background: transparent;
 }}
 QLabel#docMeta {{
@@ -240,7 +240,7 @@ QLabel#docMeta {{
 }}
 QLabel#emptyHint {{
     color: {SUBTLE};
-    font-size: 13px;
+    font-size: 12px;
 }}
 /* ---------- 拖放遮罩 ---------- */
 QWidget#dropOverlay {{
@@ -250,7 +250,7 @@ QWidget#dropOverlay {{
 }}
 QLabel#dropOverlayText {{
     color: {ACCENT};
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 600;
     background: transparent;
 }}
@@ -273,13 +273,13 @@ QDialog QListWidget {{
     background: #FFFFFF;
     border: 1px solid {BORDER};
     border-radius: 8px;
-    font-size: 13px;
+    font-size: 12px;
 }}
 QDialog QPushButton {{
     background: #FFFFFF;
     border: 1px solid {BORDER};
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 12px;
     color: {TEXT};
     padding: 5px 14px;
 }}
@@ -296,7 +296,7 @@ QDialog QPushButton#primaryButton:hover {{
 }}
 QDialog QLabel#dialogTip {{
     color: {TEXT};
-    font-size: 13px;
+    font-size: 12px;
 }}
 QDialog QLabel#dialogStatus {{
     font-size: 12px;
@@ -306,7 +306,7 @@ QKeySequenceEdit QLineEdit, QDialog QLineEdit, QDialog QComboBox {{
     border: 1px solid {BORDER};
     border-radius: 6px;
     padding: 4px 8px;
-    font-size: 13px;
+    font-size: 12px;
     color: {TEXT};
     min-height: 20px;
 }}
@@ -314,7 +314,7 @@ QKeySequenceEdit QLineEdit:focus, QDialog QLineEdit:focus, QDialog QComboBox:foc
     border: 1px solid {ACCENT};
 }}
 QDialog QLabel {{
-    font-size: 13px;
+    font-size: 12px;
 }}
 /* ---------- 状态栏 ---------- */
 QStatusBar {{
@@ -1955,7 +1955,7 @@ class WatchFoldersDialog(QDialog):
         layout.setSpacing(10)
 
         tip = QLabel("以下文件夹中的新文档会自动收录进知识库：")
-        tip.setStyleSheet(f"color: {TEXT}; font-size: 13px;")
+        tip.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
         layout.addWidget(tip)
 
         self.list = QListWidget()
@@ -1975,14 +1975,14 @@ class WatchFoldersDialog(QDialog):
         layout.addLayout(btn_row)
 
         self.autostart_cb = QCheckBox("开机自动启动")
-        self.autostart_cb.setStyleSheet(f"color: {TEXT}; font-size: 13px;")
+        self.autostart_cb.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
         self.autostart_cb.setChecked(config.autostart_enabled())
         layout.addWidget(self.autostart_cb)
 
         # ---------- AI 问答：只填 Key，接口地址与模型自动确定 ----------
         llm_title = QLabel("AI 问答（可选；不填则只返回检索到的原文片段）：")
         llm_title.setWordWrap(True)
-        llm_title.setStyleSheet(f"color: {TEXT}; font-size: 13px; margin-top: 6px;")
+        llm_title.setStyleSheet(f"color: {TEXT}; font-size: 12px; margin-top: 6px;")
         layout.addWidget(llm_title)
         llm_cfg = config.get_llm_file_config()
         self._saved_llm = llm_cfg
@@ -2071,7 +2071,7 @@ class WatchFoldersDialog(QDialog):
         self._llm_initial = self._llm_inputs()
         self._llm_result = None
         self.auto_tags_cb = QCheckBox("收录时用 AI 自动生成标签（会发送文档前 1500 字）")
-        self.auto_tags_cb.setStyleSheet(f"color: {TEXT}; font-size: 13px;")
+        self.auto_tags_cb.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
         self.auto_tags_cb.setChecked(config.auto_tags_enabled())
         layout.addWidget(self.auto_tags_cb)
         overrides = config.llm_env_overrides()
@@ -2088,7 +2088,7 @@ class WatchFoldersDialog(QDialog):
         # ---------- 全局快捷键：和 API Key 一样在这里配置 ----------
         hk_title = QLabel("全局快捷键（在任何程序里按下都能直接呼出界面或收录）：")
         hk_title.setWordWrap(True)
-        hk_title.setStyleSheet(f"color: {TEXT}; font-size: 13px; margin-top: 6px;")
+        hk_title.setStyleSheet(f"color: {TEXT}; font-size: 12px; margin-top: 6px;")
         layout.addWidget(hk_title)
         self.hotkey_form = HotkeyForm(current_hotkeys, self)
         layout.addWidget(self.hotkey_form)

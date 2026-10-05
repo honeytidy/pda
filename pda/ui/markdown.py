@@ -28,10 +28,10 @@ CODE_BG = "#F3F4F6"
 QUOTE_COLOR = "#646A73"
 TABLE_BORDER = "#D0D3D9"
 TABLE_HEADER_BG = "#F5F6F8"
-CODE_FONTS = ["Consolas", "Microsoft YaHei UI"]  # 与 theme.MONO_FAMILIES 一致
+CODE_FONTS = ["Consolas", "SimSun"]  # 与 theme.MONO_FAMILIES 一致
 
 # 标题字号（px），正文 14px
-_HEADING_PX = {1: 19, 2: 17, 3: 15}
+_HEADING_PX = {1: 18, 2: 16, 3: 14}
 _LINK_SCHEMES = ("http://", "https://")
 _FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 _TABLE_ROW = re.compile(r"^\s*\|")
