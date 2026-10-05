@@ -279,7 +279,7 @@ def main():
     if minimized and win.tray is not None:
         win.start_in_tray()
     else:
-        win.show()
+        win.showMaximized()  # resize 的 1100x720 作为还原后的窗口尺寸
     if splash is not None:
         splash.finish(win)
     return app.exec()

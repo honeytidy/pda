@@ -1694,7 +1694,8 @@ class MainWindow(QMainWindow):
             self._restore_from_tray()
 
     def _restore_from_tray(self):
-        self.showNormal()
+        # 每次进入主界面都最大化（托盘双击/菜单、二次启动激活、全局快捷键共用此入口）
+        self.showMaximized()
         self.raise_()
         self.activateWindow()
 
