@@ -260,28 +260,59 @@ def _fts_terms(query: str) -> list:
     return [t for t in terms if not (t in seen or seen.add(t))][:32]
 
 
+# 问句里的虚词/疑问词：按它们切开连续汉字，剩下的 2 字段多半是实词（"怎么报销" → 报销）
+_FUNCTION_WORDS = re.compile(
+    "是什么|为什么|怎么样|有没有|是不是|请问|什么|怎么|如何|哪些|哪个|哪里|多少|是否|"
+    "一下|关于|还有|以及|[的了吗呢吧啊么和与及或在是有]"
+)
+
+
+def _short_terms(query: str) -> list:
+    """trigram 匹配不到的 2 字中文词（"合同"、"怎么报销"里的"报销"），走 LIKE 子串匹配。"""
+    words = []
+    for run in _CJK_RUN.findall(query):
+        words.extend(w for w in _FUNCTION_WORDS.split(run) if len(w) == 2)
+    return list(dict.fromkeys(words))[:8]
+
+
 def fts_search(query: str, top_k: int = 5, doc_ids: list | None = None) -> list:
     """FTS5 关键词检索，返回 chunk 行（含文档信息）。查询失败时抛异常由调用方处理。
 
     doc_ids 不为 None 时只在这些文档里检索（在 SQL 里过滤，不是先取全库 top_k 再筛）。
     """
     terms = _fts_terms(query)
-    if not terms or (doc_ids is not None and not doc_ids):
+    shorts = _short_terms(query)
+    if not (terms or shorts) or (doc_ids is not None and not doc_ids):
         return []
-    # 检索词作为短语加双引号；词内的双引号按 FTS5 语法写成两个
-    match_q = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
-    scope_sql, params = "", [match_q]
+    scope_sql, scope_params = "", []
     if doc_ids is not None:
         scope_sql = f" AND c.doc_id IN ({','.join('?' for _ in doc_ids)})"
-        params.extend(int(d) for d in doc_ids)
-    params.append(top_k)
+        scope_params = [int(d) for d in doc_ids]
+    rows = []
     with connect() as conn:
-        rows = conn.execute(
-            "SELECT c.id, c.doc_id, c.seq, c.text, d.title, d.file_path,"
-            " bm25(chunks_fts) AS score"
-            " FROM chunks_fts f JOIN chunks c ON c.id = f.rowid"
-            " JOIN documents d ON d.id = c.doc_id"
-            f" WHERE chunks_fts MATCH ?{scope_sql} ORDER BY score LIMIT ?",
-            params,
-        ).fetchall()
+        if terms:
+            # 检索词作为短语加双引号；词内的双引号按 FTS5 语法写成两个
+            match_q = " OR ".join('"' + t.replace('"', '""') + '"' for t in terms)
+            rows = conn.execute(
+                "SELECT c.id, c.doc_id, c.seq, c.text, d.title, d.file_path,"
+                " bm25(chunks_fts) AS score"
+                " FROM chunks_fts f JOIN chunks c ON c.id = f.rowid"
+                " JOIN documents d ON d.id = c.doc_id"
+                f" WHERE chunks_fts MATCH ?{scope_sql} ORDER BY score LIMIT ?",
+                [match_q, *scope_params, top_k],
+            ).fetchall()
+        if shorts and len(rows) < top_k:
+            # 2 字词 trigram 索引用不上，LIKE 全表扫描：个人知识库规模下可接受；
+            # 命中的短词越多排越前
+            hit_sql = " + ".join("(instr(c.text, ?) > 0)" for _ in shorts)
+            seen = [r["id"] for r in rows]
+            seen_sql = f" AND c.id NOT IN ({','.join('?' for _ in seen)})" if seen else ""
+            rows += conn.execute(
+                "SELECT c.id, c.doc_id, c.seq, c.text, d.title, d.file_path,"
+                f" ({hit_sql}) AS hits"
+                " FROM chunks c JOIN documents d ON d.id = c.doc_id"
+                f" WHERE ({hit_sql}) > 0{scope_sql}{seen_sql}"
+                " ORDER BY hits DESC, c.id LIMIT ?",
+                [*shorts, *shorts, *scope_params, *seen, top_k - len(rows)],
+            ).fetchall()
     return [dict(r) for r in rows]

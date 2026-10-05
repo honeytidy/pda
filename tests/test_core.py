@@ -202,3 +202,46 @@ def test_tag_circuit_breaker(monkeypatch):
     assert llm.generate_tags("文本") == []
     assert llm.generate_tags("文本") == []
     assert len(calls) == 1  # 第二次被熔断，不再请求
+
+
+def test_short_terms():
+    from pda import db
+
+    assert db._short_terms("怎么报销") == ["报销"]
+    assert db._short_terms("合同的付款条款是什么") == ["合同"]
+    assert db._short_terms("发布会定在") == []
+
+
+def test_fts_matches_two_char_words(store, tmp_path):
+    from pda import db, ingest
+
+    f = tmp_path / "流程.txt"
+    f.write_text("员工出差返回后提交报销单，附发票原件。", encoding="utf-8")
+    ingest.ingest_file(str(f))
+    hits = db.fts_search("怎么报销")
+    assert hits and "报销" in hits[0]["text"]
+
+
+def test_retrieve_drops_far_vectors_and_fuses(monkeypatch):
+    from pda import db, qa, vectorstore
+
+    vec = [
+        {"chunk_id": 1, "text": "a", "distance": 0.3},
+        {"chunk_id": 2, "text": "b", "distance": 0.4},
+        {"chunk_id": 3, "text": "c", "distance": 0.9},  # 太远，丢弃
+    ]
+    fts = [{"id": 2, "text": "b"}, {"id": 4, "text": "d"}]
+    monkeypatch.setattr(vectorstore, "search", lambda *a, **k: vec)
+    monkeypatch.setattr(db, "fts_search", lambda *a, **k: fts)
+    ids = [h.get("chunk_id") or h.get("id") for h in qa.retrieve("q", query_vec=[0.0])]
+    assert ids == [2, 1, 4]  # 两路都命中的 2 排第一
+
+
+def test_answer_unrelated_question_returns_nothing(monkeypatch):
+    from pda import db, qa, vectorstore
+
+    monkeypatch.setattr(qa.embeddings, "embed", lambda t: [[0.0]])
+    monkeypatch.setattr(vectorstore, "search",
+                        lambda *a, **k: [{"chunk_id": 1, "text": "x", "distance": 0.8}])
+    monkeypatch.setattr(db, "fts_search", lambda *a, **k: [])
+    assert qa.answer("今天天气怎么样")["sources"] == []

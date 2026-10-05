@@ -57,16 +57,27 @@ def parse_scope(query: str) -> str | None:
     return None
 
 
+# 向量结果的余弦距离上限：超过即视为与问题无关，不送给 LLM。
+# bge-small-zh 实测：相关片段的最佳距离 0.28~0.46，无关问题（天气/菜谱/寒暄）最近也有 0.61+
+_MAX_VEC_DISTANCE = 0.6
+# RRF 融合常数（Cormack et al. 2009 的经验值）
+_RRF_K = 60
+_MAX_HITS = 8
+
+
 def retrieve(query: str, vec_top: int = 8, fts_top: int = 5,
              doc_ids: list | None = None, query_vec: list | None = None) -> list:
-    """混合检索：向量 top8 + FTS top5，按 chunk_id 合并去重（向量结果优先）。
+    """混合检索：向量 top8（去掉距离过远的）+ 关键词 top5，按 RRF 融合排序，最多 8 条。
 
     doc_ids 不为 None 时只在指定文档范围内检索。query_vec 可传入已算好的查询向量
     （同一问题多次检索时只算一次 embedding）。
     """
     if query_vec is None:
         query_vec = embeddings.embed([query])[0]
-    vec_hits = vectorstore.search(query_vec, top_k=vec_top, doc_ids=doc_ids)
+    vec_hits = [
+        h for h in vectorstore.search(query_vec, top_k=vec_top, doc_ids=doc_ids)
+        if h.get("distance") is None or h["distance"] <= _MAX_VEC_DISTANCE
+    ]
 
     fts_hits = []
     try:
@@ -76,15 +87,15 @@ def retrieve(query: str, vec_top: int = 8, fts_top: int = 5,
         _log.warning("FTS 检索失败，仅使用向量结果", exc_info=True)
         fts_hits = []
 
-    merged = []
-    seen = set()
-    for hit in vec_hits + fts_hits:
-        cid = hit.get("chunk_id") or hit.get("id")
-        if cid in seen:
-            continue
-        seen.add(cid)
-        merged.append(hit)
-    return merged
+    # RRF：每路按名次给 1/(k+rank) 分，两路都命中的片段自然排前；同分保持向量优先
+    scores, hits_by_id = {}, {}
+    for hits in (vec_hits, fts_hits):
+        for rank, hit in enumerate(hits):
+            cid = hit.get("chunk_id") or hit.get("id")
+            scores[cid] = scores.get(cid, 0.0) + 1.0 / (_RRF_K + rank + 1)
+            hits_by_id.setdefault(cid, hit)
+    ranked = sorted(scores, key=scores.get, reverse=True)
+    return [hits_by_id[cid] for cid in ranked[:_MAX_HITS]]
 
 
 def answer(query: str) -> dict:
