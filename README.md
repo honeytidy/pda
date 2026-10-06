@@ -6,6 +6,14 @@
 
 ▶ 完整介绍视频（含声音）：[docs/pda-intro.mp4](docs/pda-intro.mp4)
 
+## 下载体验
+
+Windows 安装包（约 158 MB，无需安装 Python，下载后双击安装）：
+
+**[⬇ 下载 pda-v0.1.0.exe](https://github.com/honeytidy/pda/releases/download/v0.1.0/pda-v0.1.0.exe)**　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
+
+从源码运行见下文"安装"一节。
+
 支持格式：**不限制文件类型**。
 
 - txt / md / pdf / docx / xlsx / xlsm / xls / pptx / 图片（png / jpg / jpeg / bmp / webp，OCR 提取文字）会深度解析全文；
