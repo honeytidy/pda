@@ -6,7 +6,11 @@
 
 ▶ 完整介绍视频（含声音）：[docs/pda-intro.mp4](docs/pda-intro.mp4)
 
-支持格式：**不限制文件类型**。txt / md / pdf / docx / xlsx / xlsm / xls / pptx / 图片（png / jpg / jpeg / bmp / webp，OCR 提取文字）会深度解析全文；未知扩展名按纯文本尝试；提取不出文字的二进制文件（如 exe、zip、psd）也会归档原件并按文件名建索引，可检索到、可从出处打开原件。
+支持格式：**不限制文件类型**。
+
+- txt / md / pdf / docx / xlsx / xlsm / xls / pptx / 图片（png / jpg / jpeg / bmp / webp，OCR 提取文字）会深度解析全文；
+- 未知扩展名按纯文本尝试；
+- 提取不出文字的二进制文件（如 exe、zip、psd）也会归档原件并按文件名建索引，可检索到、可从出处打开原件。
 
 ## 添加资料的六种方式（步骤越少越好）：
 
@@ -111,10 +115,6 @@ python scripts/restore_classic_menu.py         # 启用经典菜单（会询问�
 python scripts/restore_classic_menu.py --off   # 还原为 Win11 新版菜单
 ```
 
-启动器计时日志默认关闭：设环境变量 `PDA_MENU_LOG=1` 后写入 `%TEMP%\pda_launcher.log`。
-
-旧版本装过 Win11 原生菜单（MSIX 包）的机器，可用 `powershell "Get-AppxPackage -Name PDA.KnowledgeAssistant | Remove-AppxPackage"` 卸载。
-
 ## 配置 LLM（可选）
 
 不配置也能用：此时问答只返回检索到的原文片段。最简单的方式是在主窗口侧栏底部"设置"里选服务商、粘贴 API Key，点保存即可：
@@ -140,37 +140,3 @@ python scripts/restore_classic_menu.py --off   # 还原为 Win11 新版菜单
 ```
 
 默认 base_url 为 Moonshot（`https://api.moonshot.cn/v1`），默认模型 `kimi-k2-0905-preview`，任何 OpenAI 兼容接口均可。
-
-## 数据
-
-内容：归档文件 `data/files/`、剪贴板笔记 `data/notes/`、SQLite `data/pda.db`、向量库 `data/chroma/`、错误日志 `data/pda_error.log`。位置取决于运行方式（`pda/config.py`）：
-
-| 运行方式 | 判定 | 数据与 `pda_config.json` 位置 |
-|---|---|---|
-| 源码 `python run.py` | 非打包 | 项目目录 `./data/` |
-| 安装版 | exe 旁有 `installed.flag`（安装包写入，优先级最高） | `%LOCALAPPDATA%\PDA\` |
-| 便携版 zip | exe 旁有 `portable.flag`（`make_release.py` 放入），或已有 `data/` 目录（老版本绿色包） | exe 旁 `data/` |
-| 安装版 | 以上都没有 | `%LOCALAPPDATA%\PDA\`（卸载时询问是否删除） |
-
-环境变量 `PDA_DATA_DIR` / `PDA_CONFIG_PATH` 可覆盖。chromadb 的匿名遥测已在代码里关闭。
-
-## 发布给其他人
-
-1. `python scripts/build_exe.py` 生成 `dist/pda/`（加 `--installer` 会在最后直接调用 ISCC 出安装包）
-2. `python scripts/make_notices.py`（用打包时的同一个解释器）生成 `THIRD_PARTY_NOTICES.txt`
-3. 二选一或都做：
-   - 便携 zip：`python scripts/make_release.py` → `dist/知识库助理_portable.zip`
-   - 安装包：安装 [Inno Setup 7](https://jrsoftware.org/isinfo.php) 后 `"D:\Programs\Inno Setup 7\ISCC.exe" /DAppVersion=0.1.0 packaging\installer.iss` → `dist/知识库助理_安装包_0.1.0.exe`（版本号应与 `pda/__init__.py` 的 `__version__` 一致，`build_exe.py --installer` 会自动传入）。卸载时先用 `main.exe --quit` 让程序正常退出，超时才强制结束。per-user 安装到 `%LOCALAPPDATA%\Programs\PDA`，无需管理员；带开始菜单、可选桌面快捷方式与右键菜单、"设置 → 应用"里的卸载项
-4. 代码签名（强烈建议）：未签名的 exe 在别人电脑上会被 SmartScreen 拦截。拿到证书后先签 `dist/pda/pda.exe`、`main.exe`，再在 `installer.iss` 里启用 `SignTool=`
-5. 在干净的 Windows 沙盒里走一遍：安装/解压 → 启动 → 拖入文件 → 右键收录 → 设置 API Key 问答 → 卸载
-
-## 冒烟测试
-
-```bash
-python scripts/smoke_test.py        # 基础：txt/docx 入库 + 混合检索
-python scripts/smoke_test_v11.py    # V1.1：xlsx/pptx/图片 OCR、重复收录、watcher、剪贴板笔记
-```
-
-均使用独立临时数据目录，不污染 `./data`，不需要 API Key。
-
-UI 预览截图：`python scripts/ui_preview.py` 生成 `scripts/ui_preview_empty.png`（空状态欢迎面板）与 `scripts/ui_preview.png`（对话状态）。
