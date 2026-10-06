@@ -1,4 +1,4 @@
-# 个人助理知识库（PDA）
+# 个人助理知识库（Personal Digital Assistant）
 
 把电脑上散落的文档拖进窗口即入知识库，之后用自然语言提问，助理检索相关片段并生成带出处引用的答案，点击出处可打开原文件。
 
@@ -20,7 +20,7 @@ Windows 安装包（约 158 MB，无需安装 Python，下载后双击安装）�
 - 未知扩展名按纯文本尝试；
 - 提取不出文字的二进制文件（如 exe、zip、psd）也会归档原件并按文件名建索引，可检索到、可从出处打开原件。
 
-## 添加资料的六种方式（步骤越少越好）：
+## 添加资料的六种方式
 
 1. **剪贴板热键**：复制任意文本后按 **Ctrl+Shift+Q**，文本存为笔记（`data/notes/`）并自动入库。剪贴板为空时状态栏会提示。
 2. **拖放**：拖入文件或整个文件夹（递归收集）即自动入库；入库在后台线程进行，不卡界面。
@@ -98,29 +98,6 @@ dist/pda/
                         # 主窗口出现后自动关闭；带参数（--add 等）时不弹 splash、直接转发秒退
   main.exe   # 应用本体（PyInstaller onedir）
   _internal/            # Python 运行时与依赖
-```
-
-`dist/pda/` 解压后约 460MB（安装包经 LZMA 压缩后约 166MB）。双击用 `pda.exe`；右键菜单指向 `main.exe --add`（不经启动器）。数据位置按下文「数据目录」的规则判定：刚构建出的 `dist/pda` 里有 `data/`（build_exe.py 放入的内置模型 `data/model_cache`），因此按便携版处理，数据写在 exe 旁 `data/`。
-
-> 注意：在开发机上用过 `dist/pda` 后，`dist/pda/data/` 里就是你的真实知识库（pda.db、归档原件、笔记）。分发请用 `python scripts/make_release.py` 生成的 zip（只带 `model_cache`），不要直接拷贝/压缩 `dist/pda` 或整个项目目录。开发时建议设 `PDA_DATA_DIR` 把数据放到项目外。
-
-构建只用 `scripts/build_exe.py`（不要直接跑 pyinstaller：会整目录覆盖 `dist/pda`，含 `data/`）。构建脚本在找不到 csc 时直接报错退出；项目 `.venv` 不可用时默认报错，需显式加 `--allow-conda` 才用当前解释器打包，且不会自动往全局环境装包。内置语义模型暂存在 `build_model_cache/`（缺失时先从 `dist/pda/data/model_cache` 复制，再不行用构建解释器下载），构建后放进 `dist/pda/data/model_cache`；安装包和便携 zip 缺模型时直接报错。
-
-图标（眼睛 logo = 横放的 θ）：`pda/ui/icon.py` 用 QPainter 绘制，splash/窗口/托盘共用；`scripts/make_icon.py` 渲染多尺寸 PNG 并打包为 `src/pda.ico`（纯标准库 ICO 容器），启动器经 csc `-win32icon` 嵌入、应用本体经 PyInstaller `--icon` 嵌入。改动 logo 后依次跑 `make_icon.py` → `build_exe.py`。
-
-体积构成与裁剪（1.1GB → 约 460MB）：MKL 换 PyPI numpy/OpenBLAS（`build_deps/` 通过 PYTHONPATH 优先，-330MB）、剔除 botocore（-114MB）与 chromadb 服务端依赖（kubernetes/uvicorn/fastapi/grpc 无关部分等）、opencv 换 headless 等。注意几个不能裁的：`opentelemetry`/`grpc`（chromadb/__init__ 模块层 import）、`posthog`（exclude 后缀匹配会误伤 chromadb.telemetry.product.posthog）、`hf_xet`（huggingface_hub 1.x 硬依赖，裁了模型下载失败）；chromadb 必须 `--collect-all`（api.rust 等懒加载子模块静态图收不全），图爆炸靠 exclude 清单切断。
-
-- 启动体感：启动器 splash ~0.2s 出现，应用主窗口约 5-6s；IPC 类调用（`--add` 转发、二次激活）约 0.6s。
-- conda Python 的 `_ssl` 等扩展依赖 `Library\bin` 的 OpenSSL 等 DLL，构建脚本已通过 `--add-binary` 打包；若升级 Python/依赖后 exe 静默退出（exit 1 无输出），先看 exe 旁 `data/pda_error.log`（未捕获异常会记录到那里），再检查是否有新的缺失 DLL。
-- anaconda base 环境包多，构建脚本用一串 `--exclude-module` 切断 `fsspec.gui → panel → playwright` 这类无关依赖链，新增依赖时如图异常膨胀往这里加。`build_deps/` 的准备命令（版本固定，numpy 与 requirements.txt 一致）：`python -m pip install --target=build_deps numpy==2.5.3 opencv-python-headless==5.0.0.93`。
-
-打包后要让右键菜单指向 exe，需显式指定：`python scripts/install_context_menu.py --exe dist/pda/main.exe`（脚本不自动探测构建目录，避免把开发机路径写进注册表；不带 `--exe` 时注册 pythonw + run.py）。绿色版用户直接双击包里的"安装右键菜单.bat"。
-
-**Windows 11 注意**：Win11 的新版右键菜单会把本项折叠到"**显示更多选项**"里（或按住 Shift 再右键直接出经典菜单）。如想让它出现在顶级菜单，恢复经典右键菜单样式（影响所有右键菜单，随时可还原）：
-
-```bash
-python scripts/restore_classic_menu.py         # 启用经典菜单（会询问是否重启资源管理器）
-python scripts/restore_classic_menu.py --off   # 还原为 Win11 新版菜单
 ```
 
 ## 配置 LLM（可选）
