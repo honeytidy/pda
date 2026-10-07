@@ -18,6 +18,9 @@ _TIMEOUT = 15          # 单次连接/读取超时
 _TOTAL_DEADLINE = 30   # 整次抓取总时长上限（慢速滴流的服务器单次读取永远不超时）
 _MAX_BYTES = 10 * 1024 * 1024  # 网页正文抓取上限，防止链接指向大文件时整个读进内存
 _MAX_REDIRECTS = 5
+# 链接直接指向图片时按图片收录（扩展名需在 parsers.IMAGE_EXTS 内，入库时走 OCR）
+_IMAGE_TYPES = {"image/jpeg": ".jpg", "image/jpg": ".jpg", "image/pjpeg": ".jpg",
+                "image/png": ".png", "image/webp": ".webp", "image/bmp": ".bmp"}
 _FAKE_IP_NET = ipaddress.ip_network("198.18.0.0/15")
 
 URL_RE = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
@@ -59,8 +62,16 @@ def _download(url: str) -> tuple:
     deadline = time.monotonic() + _TOTAL_DEADLINE
     for _ in range(_MAX_REDIRECTS + 1):
         _check_public_url(url)
-        resp = requests.get(url, headers={"User-Agent": _UA}, timeout=_TIMEOUT,
-                            stream=True, allow_redirects=False)
+        # 图床/CDN 防盗链：不带 Referer 常返回 403（如新浪图床）。默认带同源 Referer，
+        # 仍 403 再不带 Referer 重试一次（少数站点只放行无 Referer 的请求）
+        parsed = urlparse(url)
+        referer = f"{parsed.scheme}://{parsed.netloc}/"
+        resp = requests.get(url, headers={"User-Agent": _UA, "Referer": referer},
+                            timeout=_TIMEOUT, stream=True, allow_redirects=False)
+        if resp.status_code == 403:
+            resp.close()
+            resp = requests.get(url, headers={"User-Agent": _UA}, timeout=_TIMEOUT,
+                                stream=True, allow_redirects=False)
         if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
             location = resp.headers.get("Location")
             resp.close()
@@ -72,9 +83,11 @@ def _download(url: str) -> tuple:
             resp.close()  # stream=True：不关闭的话连接一直占着
             resp.raise_for_status()
         ctype = resp.headers.get("Content-Type", "").lower()
-        if ctype and "html" not in ctype and "xml" not in ctype and "text" not in ctype:
+        mime = ctype.split(";")[0].strip()
+        if (ctype and "html" not in ctype and "xml" not in ctype and "text" not in ctype
+                and mime not in _IMAGE_TYPES):
             resp.close()
-            raise FetchError(f"链接不是网页（{ctype.split(';')[0]}），请下载后拖入收录")
+            raise FetchError(f"链接不是网页或支持的图片（{mime}），请下载后拖入收录")
         chunks, total = [], 0
         try:
             for chunk in resp.iter_content(65536):
@@ -90,12 +103,12 @@ def _download(url: str) -> tuple:
     raise FetchError("重定向次数过多")
 
 
-def fetch_webpage(url: str) -> tuple:
-    """抓取 URL，返回 (title, markdown_text)。失败抛 FetchError。"""
+def _fetch(url: str) -> tuple:
+    """_download 并把 requests 异常转成 FetchError。"""
     import requests
 
     try:
-        resp, raw = _download(url)
+        return _download(url)
     except requests.Timeout:
         raise FetchError(f"抓取超时（{_TIMEOUT} 秒）")
     except requests.HTTPError as e:
@@ -103,6 +116,26 @@ def fetch_webpage(url: str) -> tuple:
     except requests.RequestException as e:
         raise FetchError(f"网络错误：{type(e).__name__}")
 
+
+def fetch_and_save(url: str) -> tuple:
+    """抓取 URL 并存盘，返回 (title, path, kind)，kind 为 "网页" 或 "图片"。失败抛 FetchError。"""
+    resp, raw = _fetch(url)
+    mime = resp.headers.get("Content-Type", "").split(";")[0].strip().lower()
+    if mime in _IMAGE_TYPES:
+        name = Path(urlparse(resp.url or url).path).stem or "图片"
+        return name, save_image(name, raw, _IMAGE_TYPES[mime]), "图片"
+    title, markdown = _extract(url, resp, raw)
+    return title, save_webpage_note(title, markdown), "网页"
+
+
+def fetch_webpage(url: str) -> tuple:
+    """抓取 URL，返回 (title, markdown_text)。失败抛 FetchError。"""
+    resp, raw = _fetch(url)
+    return _extract(url, resp, raw)
+
+
+def _extract(url: str, resp, raw: bytes) -> tuple:
+    """网页字节 → (title, markdown_text)。"""
     try:
         from readability import Document
     except ImportError as e:
@@ -137,20 +170,33 @@ _RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
              *(f"LPT{i}" for i in range(1, 10))}
 
 
-def save_webpage_note(title: str, markdown: str) -> str:
-    """存到 data/notes/网页_标题_时间戳.md，返回路径。"""
+def _unique_note_path(prefix: str, title: str, ext: str) -> Path:
+    """data/notes/前缀_标题_时间戳.ext，重名时追加序号。"""
     config.ensure_dirs()
     # 去掉非法字符与控制字符（换行/制表符等），Windows 保留名（CON/NUL…）加前缀
     safe = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title)[:40].strip(" .") or "未命名"
     if safe.upper().split(".")[0] in _RESERVED:
         safe = "_" + safe
     stamp = time.strftime("%Y%m%d_%H%M%S")
-    path = Path(config.NOTES_DIR) / f"网页_{safe}_{stamp}.md"
+    path = Path(config.NOTES_DIR) / f"{prefix}_{safe}_{stamp}{ext}"
     n = 1
     while path.exists():
-        path = Path(config.NOTES_DIR) / f"网页_{safe}_{stamp}_{n}.md"
+        path = Path(config.NOTES_DIR) / f"{prefix}_{safe}_{stamp}_{n}{ext}"
         n += 1
+    return path
+
+
+def save_webpage_note(title: str, markdown: str) -> str:
+    """存到 data/notes/网页_标题_时间戳.md，返回路径。"""
+    path = _unique_note_path("网页", title, ".md")
     path.write_text(markdown, encoding="utf-8")
+    return str(path)
+
+
+def save_image(title: str, data: bytes, ext: str) -> str:
+    """存到 data/notes/网页图片_文件名_时间戳.ext，返回路径。"""
+    path = _unique_note_path("网页图片", title, ext)
+    path.write_bytes(data)
     return str(path)
 
 

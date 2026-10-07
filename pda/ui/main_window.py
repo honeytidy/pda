@@ -570,7 +570,7 @@ class AskWorker(QThread):
 
 
 class WebWorker(QThread):
-    """抓取网页正文并存为 markdown 笔记（网络请求在 worker 线程）。"""
+    """抓取网页正文存为 markdown 笔记，或链接直接是图片时存为图片（网络请求在 worker 线程）。"""
 
     done = Signal(dict)
 
@@ -580,9 +580,8 @@ class WebWorker(QThread):
 
     def run(self):
         try:
-            title, markdown = web.fetch_webpage(self.url)
-            path = web.save_webpage_note(title, markdown)
-            self.done.emit({"ok": True, "title": title, "path": path})
+            title, path, kind = web.fetch_and_save(self.url)
+            self.done.emit({"ok": True, "title": title, "path": path, "kind": kind})
         except web.FetchError as e:
             self.done.emit({"ok": False, "error": str(e)})
         except Exception as e:
@@ -1498,7 +1497,7 @@ class MainWindow(QMainWindow):
         if self._web_toast is not None and self._web_toast.is_alive():
             self._web_toast.close()  # 接下来由收录进度 toast 接手
         self._web_toast = None
-        self._add_system_notice(f"已抓取网页《{result['title']}》，正在收录")
+        self._add_system_notice(f"已抓取{result['kind']}《{result['title']}》，正在收录")
         self._start_ingest([result["path"]])
 
     def _on_answer(self, result):

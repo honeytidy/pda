@@ -61,6 +61,73 @@ def test_html_to_text_no_duplicates_and_keeps_loose_text():
     assert "开头" in text and "结尾" in text and "x | y" in text
 
 
+
+class _FakeResp:
+    def __init__(self, status, ctype, body=b"", url=""):
+        self.status_code, self.url, self._body = status, url, body
+        self.headers = {"Content-Type": ctype}
+        self.is_redirect = False
+        self.encoding = "utf-8"
+
+    def iter_content(self, n):
+        yield self._body
+
+    def close(self):
+        pass
+
+    def raise_for_status(self):
+        import requests
+        raise requests.HTTPError(response=self)
+
+
+def _fake_get(monkeypatch, responder):
+    import requests
+    from pda import web
+
+    calls = []
+
+    def get(url, headers=None, **kw):
+        calls.append(dict(headers or {}))
+        return responder(url, headers or {})
+
+    monkeypatch.setattr(requests, "get", get)
+    monkeypatch.setattr(web, "_check_public_url", lambda url: None)
+    return calls
+
+
+def test_fetch_image_url_with_referer(monkeypatch, tmp_path):
+    from pda import config, web
+
+    monkeypatch.setattr(config, "NOTES_DIR", tmp_path)
+    url = "https://wx4.sinaimg.cn/mw690/abc.jpg"
+    # 模拟防盗链：没有 Referer 就 403
+    calls = _fake_get(monkeypatch, lambda u, h: _FakeResp(200, "image/jpeg", b"JPGDATA", u)
+                      if h.get("Referer") else _FakeResp(403, "text/html"))
+    title, path, kind = web.fetch_and_save(url)
+    assert kind == "图片" and title == "abc"
+    assert calls[0]["Referer"] == "https://wx4.sinaimg.cn/"
+    assert path.endswith(".jpg") and open(path, "rb").read() == b"JPGDATA"
+
+
+def test_fetch_retries_without_referer_on_403(monkeypatch, tmp_path):
+    from pda import config, web
+
+    monkeypatch.setattr(config, "NOTES_DIR", tmp_path)
+    calls = _fake_get(monkeypatch, lambda u, h: _FakeResp(403, "text/html")
+                      if h.get("Referer") else _FakeResp(200, "image/png", b"PNG", u))
+    _, path, _ = web.fetch_and_save("https://example.com/a.png")
+    assert len(calls) == 2 and "Referer" not in calls[1]
+    assert path.endswith(".png")
+
+
+def test_fetch_rejects_unsupported_image(monkeypatch):
+    from pda import web
+
+    _fake_get(monkeypatch, lambda u, h: _FakeResp(200, "image/gif", b"GIF", u))
+    with pytest.raises(web.FetchError, match="image/gif"):
+        web.fetch_and_save("https://example.com/a.gif")
+
+
 # ---------- 配置 ----------
 
 def test_api_key_encrypted_on_disk():
