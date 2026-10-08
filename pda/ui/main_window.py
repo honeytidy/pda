@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import config, db, embeddings, hotkey, ingest, ipc, llm, qa, web
+from .. import __version__, config, db, embeddings, hotkey, ingest, ipc, llm, qa, updater, web
 from ..watcher import FolderWatcher
 from . import markdown, theme
 from .toast import show_progress, show_toast
@@ -588,6 +588,48 @@ class WebWorker(QThread):
             self.done.emit({"ok": False, "error": f"{type(e).__name__}: {e}"})
 
 
+class UpdateCheckWorker(QThread):
+    """查询 GitHub 最新版本（网络请求在 worker 线程）。"""
+
+    done = Signal(dict)
+
+    def run(self):
+        try:
+            self.done.emit({"ok": True, "info": updater.check_latest()})
+        except updater.UpdateError as e:
+            self.done.emit({"ok": False, "error": str(e)})
+        except Exception as e:
+            self.done.emit({"ok": False, "error": f"{type(e).__name__}: {e}"})
+
+
+class UpdateDownloadWorker(QThread):
+    """下载新版本安装包并校验 sha256。"""
+
+    progress = Signal(int)  # 百分比；总大小未知时为 -1
+    done = Signal(dict)
+
+    def __init__(self, info, parent=None):
+        super().__init__(parent)
+        self.info = info
+        self._last = None
+
+    def _report(self, done_bytes, total):
+        pct = int(done_bytes * 100 / total) if total else -1
+        if pct != self._last:  # 只在百分比变化时发信号，避免刷屏
+            self._last = pct
+            self.progress.emit(pct)
+
+    def run(self):
+        try:
+            path = updater.download(self.info, progress=self._report,
+                                    cancelled=self.isInterruptionRequested)
+            self.done.emit({"ok": True, "path": path})
+        except updater.UpdateError as e:
+            self.done.emit({"ok": False, "error": str(e)})
+        except Exception as e:
+            self.done.emit({"ok": False, "error": f"{type(e).__name__}: {e}"})
+
+
 class SelectionWorker(QThread):
     """读取资源管理器选中项：COM 跨进程调用放在工作线程，资源管理器卡住时不拖死主界面。"""
 
@@ -624,6 +666,7 @@ _orphan_workers = []
 
 # 退出时只读/联网任务（问答、抓网页、读选中项、验证 Key）最多再等这么久，之后直接放弃
 _READONLY_GRACE_SEC = 1.5
+_UPDATE_CHECK_DELAY_MS = 30_000
 
 
 def _track_side_worker(worker):
@@ -829,6 +872,13 @@ class MainWindow(QMainWindow):
         self.hotkey = None
         self._start_hotkeys()
 
+        # 自动检查更新：启动后稍等再查，不和模型加载 / 首次收录抢网络和 CPU
+        self._update_checking = False
+        self._update_download = None
+        self._update_toast = None
+        if config.update_check_enabled():
+            QTimer.singleShot(_UPDATE_CHECK_DELAY_MS, lambda: self._check_update(manual=False))
+
         # 单实例 IPC：右键菜单 --add 转发收录 / 无参二次启动激活窗口
         # quit：卸载程序请求正常退出（先等收录写完，避免强杀损坏数据）
         self.ipc_server = ipc.IpcServer(self, accept=("paths", "activate", "quit"))
@@ -857,6 +907,8 @@ class MainWindow(QMainWindow):
             tray_menu = QMenu()
             act_show = tray_menu.addAction("显示主窗口")
             act_show.triggered.connect(self._restore_from_tray)
+            act_update = tray_menu.addAction("检查更新")
+            act_update.triggered.connect(lambda: self._check_update(manual=True))
             act_quit = tray_menu.addAction("退出")
             act_quit.triggered.connect(self._quit_app)
             self.tray.setContextMenu(tray_menu)
@@ -1335,6 +1387,11 @@ class MainWindow(QMainWindow):
                 config.set_autostart(dialog.autostart_checked())
             except OSError as e:
                 errors.append(f"开机自动启动设置失败：{e}")
+        if dialog.update_check_checked() != config.update_check_enabled():
+            try:
+                config.save_update_prefs(enabled=dialog.update_check_checked())
+            except (config.ConfigError, OSError) as e:
+                errors.append(f"自动检查更新设置未保存：{e}")
         llm_values = dialog.llm_values()
         old_llm = config.get_llm_file_config()
         if llm_values["api_key"] is None:  # AI 设置没改：沿用已保存的值，只可能改了自动标签开关
@@ -1717,6 +1774,119 @@ class MainWindow(QMainWindow):
             self.input.setFocus(Qt.ShortcutFocusReason)
             self.input.selectAll()  # 上次没发出去的问题保留，直接打字即覆盖
 
+    # ---------- 自动升级 ----------
+
+    def _check_update(self, manual: bool):
+        """manual=True：托盘菜单"检查更新"，没有新版 / 出错也要告诉用户；自动检查则静默。"""
+        if self._shutting_down or self._update_checking:
+            return
+        if self._update_download is not None:
+            if manual:
+                show_toast("正在下载新版本…")
+            return
+        self._update_checking = True
+        if manual:
+            self._update_toast = self._progress_toast(self._update_toast, "正在检查更新…")
+        worker = UpdateCheckWorker(self)
+        worker.done.connect(lambda r: self._on_update_checked(r, manual))
+        self._keep_worker(worker)
+        worker.start()
+
+    def _on_update_checked(self, result: dict, manual: bool):
+        self._update_checking = False
+        if self._shutting_down:
+            return
+        if not result["ok"]:
+            if manual:
+                self._update_toast = self._progress_toast(
+                    self._update_toast, result["error"], success=False)
+            return
+        info = result["info"]
+        if info is None:
+            if manual:
+                self._update_toast = self._progress_toast(
+                    self._update_toast, f"已是最新版本（{__version__}）")
+            return
+        if self._update_toast is not None and self._update_toast.is_alive():
+            self._update_toast.close()
+        self._update_toast = None
+        if not manual and info["version"] == config.skipped_version():
+            return
+        self._prompt_update(info)
+
+    def _prompt_update(self, info: dict):
+        notes = info["notes"][:800] + ("…" if len(info["notes"]) > 800 else "")
+        size = f"（{info['size'] / 1024 / 1024:.0f} MB）" if info["size"] else ""
+        box = QMessageBox(self)
+        box.setWindowTitle("发现新版本")
+        box.setIcon(QMessageBox.Information)
+        box.setText(f"知识库助理 {info['version']} 已发布，当前版本 {__version__}。")
+        if notes:
+            box.setInformativeText(notes)
+        if updater.can_self_install():
+            now_btn = box.addButton(f"立即更新{size}", QMessageBox.AcceptRole)
+        else:
+            now_btn = box.addButton("打开下载页", QMessageBox.AcceptRole)
+        box.addButton("稍后", QMessageBox.RejectRole)
+        skip_btn = box.addButton("跳过此版本", QMessageBox.DestructiveRole)
+        box.setDefaultButton(now_btn)
+        box.exec()
+        clicked = box.clickedButton()
+        box.deleteLater()
+        if clicked is skip_btn:
+            try:
+                config.save_update_prefs(skipped=info["version"])
+            except (config.ConfigError, OSError) as e:
+                self.statusBar().showMessage(f"保存失败：{e}")
+        elif clicked is now_btn:
+            if updater.can_self_install():
+                self._start_update_download(info)
+            else:
+                # 便携版 / 源码运行：安装包会装成安装版，不能直接覆盖，交给用户自己下载
+                QDesktopServices.openUrl(QUrl(info["page"]))
+
+    def _start_update_download(self, info: dict):
+        self._update_toast = self._progress_toast(self._update_toast, "正在下载新版本…")
+        worker = UpdateDownloadWorker(info, self)
+        worker.progress.connect(self._on_update_progress)
+        worker.done.connect(self._on_update_downloaded)
+        self._update_download = worker
+        self._keep_worker(worker)
+        worker.start()
+
+    def _on_update_progress(self, pct: int):
+        text = f"正在下载新版本… {pct}%" if pct >= 0 else "正在下载新版本…"
+        self._update_toast = self._progress_toast(self._update_toast, text)
+        self.statusBar().showMessage(text)
+
+    def _on_update_downloaded(self, result: dict):
+        self._update_download = None
+        if self._shutting_down:
+            return
+        if not result["ok"]:
+            self._update_toast = self._progress_toast(
+                self._update_toast, f"更新失败：{result['error']}", success=False)
+            self.statusBar().showMessage(f"更新失败：{result['error']}")
+            return
+        if self._ingest_running or self._ingest_queue:
+            ret = QMessageBox.question(
+                self, "安装更新",
+                "新版本已下载完成。还有文档正在收录，安装前会等收录写完再退出。\n现在安装吗？",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if ret != QMessageBox.Yes:
+                self._update_toast = self._progress_toast(
+                    self._update_toast, "已取消安装，下次检查更新时可再安装", success=False)
+                return
+        try:
+            updater.launch_installer(result["path"])
+        except OSError as e:
+            self._update_toast = self._progress_toast(
+                self._update_toast, f"启动安装程序失败：{e}", success=False)
+            return
+        self._update_toast = self._progress_toast(self._update_toast, "正在安装新版本，完成后自动重启…")
+        # 退出让出文件锁和 DLL；安装程序启动时也会先发 --quit 并等待本进程退出
+        QTimer.singleShot(0, self._quit_app)
+
     def start_in_tray(self):
         """开机自启（--minimized）：不显示主窗口，只留托盘图标。"""
         self._tray_notified = True  # 不弹"已最小化到托盘"
@@ -1978,6 +2148,11 @@ class WatchFoldersDialog(QDialog):
         self.autostart_cb.setChecked(config.autostart_enabled())
         layout.addWidget(self.autostart_cb)
 
+        self.update_cb = QCheckBox("启动后自动检查新版本（托盘菜单也可手动检查）")
+        self.update_cb.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
+        self.update_cb.setChecked(config.update_check_enabled())
+        layout.addWidget(self.update_cb)
+
         # ---------- AI 问答：只填 Key，接口地址与模型自动确定 ----------
         llm_title = QLabel("AI 问答（可选；不填则只返回检索到的原文片段）：")
         llm_title.setWordWrap(True)
@@ -2120,6 +2295,9 @@ class WatchFoldersDialog(QDialog):
 
     def autostart_checked(self) -> bool:
         return self.autostart_cb.isChecked()
+
+    def update_check_checked(self) -> bool:
+        return self.update_cb.isChecked()
 
     def hotkey_values(self) -> dict:
         return self.hotkey_form.values()

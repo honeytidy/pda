@@ -90,6 +90,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\pda.exe"; Description: "立即运行{#AppName}"; Flags: nowait postinstall skipifsilent
+; 程序内自动升级：pda/updater.py 以 /SILENT /RELAUNCH 启动安装包，装完自动重新打开
+Filename: "{app}\pda.exe"; Flags: nowait; Check: ShouldRelaunch
 
 [UninstallRun]
 ; 先让运行中的实例正常退出（托盘常驻），否则文件被占用删不掉：
@@ -108,6 +110,23 @@ function PsQuotedApp(Param: String): String;
 begin
   Result := ExpandConstant('{app}');
   StringChangeEx(Result, '''', '''''', True);
+end;
+
+// 命令行带 /RELAUNCH（程序内自动升级）且是静默安装时，装完重新启动程序
+function ShouldRelaunch: Boolean;
+begin
+  Result := WizardSilent and (Pos('/RELAUNCH', UpperCase(GetCmdTail)) > 0);
+end;
+
+// 覆盖安装前先让运行中的旧版正常退出（等收录写完、释放 DLL），最多等约 10 秒；
+// 仍未退出的由 CloseApplications（Restart Manager）兜底
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+  if FileExists(ExpandConstant('{app}\main.exe')) then
+    Exec(ExpandConstant('{app}\main.exe'), '--quit', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

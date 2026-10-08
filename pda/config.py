@@ -297,6 +297,27 @@ def auto_tags_enabled() -> bool:
     return _parse_bool(_read_config_file().get("auto_tags", True), default=True)
 
 
+def update_check_enabled() -> bool:
+    """启动后是否自动检查新版本（pda_config.json 的 update_check，默认开）。"""
+    return _parse_bool(_read_config_file().get("update_check", True), default=True)
+
+
+def skipped_version() -> str:
+    """用户选择"跳过此版本"的版本号（自动检查时不再提示它）。"""
+    value = _read_config_file().get("skipped_version")
+    return value if isinstance(value, str) else ""
+
+
+def save_update_prefs(enabled: bool | None = None, skipped: str | None = None):
+    values = {}
+    if enabled is not None:
+        values["update_check"] = bool(enabled)
+    if skipped is not None:
+        values["skipped_version"] = skipped or None
+    if values:
+        _update_config_file(**values)
+
+
 def _parse_bool(value, default: bool) -> bool:
     """宽松解析手写配置里的布尔值："false" / "0" / "no" / "off" / 0 都视为关闭。"""
     if isinstance(value, bool):
