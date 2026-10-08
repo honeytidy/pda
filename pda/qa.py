@@ -98,11 +98,12 @@ def retrieve(query: str, vec_top: int = 8, fts_top: int = 5,
     return [hits_by_id[cid] for cid in ranked[:_MAX_HITS]]
 
 
-def answer(query: str) -> dict:
+def answer(query: str, on_delta=None) -> dict:
     """返回 {answer, sources, markdown}；sources 为 [{index, title, file_path, snippet}]。
 
     markdown=True 仅当答案来自 LLM：检索兜底展示的是文档原文片段，里面的 * # 等
     不是 Markdown，按纯文本显示。
+    on_delta(text)：LLM 流式输出时回调截至目前的答案全文（已带范围提示前缀），供界面边生成边显示。
     """
     # 限定范围提问：标题/标签模糊匹配候选文档
     scope_note = ""
@@ -167,8 +168,9 @@ def answer(query: str) -> dict:
             "content": f"资料片段：\n{context}\n\n用户问题：{query}",
         },
     ]
+    stream = (lambda t: on_delta(scope_note + t)) if on_delta is not None else None
     try:
-        text = llm.chat(messages)
+        text = llm.chat(messages, on_delta=stream)
     except Exception as e:
         text = f"调用 LLM 失败：{e}\n\n以下是检索到的相关资料片段：\n" + "\n".join(
             f"[{s['index']}] {s['title']}：{s['text'][:200]}" for s in sources

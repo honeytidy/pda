@@ -300,34 +300,84 @@ def _is_model_gone(e) -> bool:
     return isinstance(e, (openai.BadRequestError, openai.PermissionDeniedError)) and "model" in text
 
 
-def chat(messages: list, temperature: float = 0.3, timeout: float = _CHAT_TIMEOUT) -> str:
+def chat(messages: list, temperature: float = 0.3, timeout: float = _CHAT_TIMEOUT,
+         on_delta=None) -> str:
+    """on_delta(text)：传入时流式输出，每收到新正文回调一次截至目前的完整文本。"""
     cfg = config.get_llm_config()
     model = _resolve_model(cfg)
     try:
-        return _chat_with(cfg, model, messages, temperature, timeout)
+        return _chat_with(cfg, model, messages, temperature, timeout, on_delta)
     except Exception as e:
         if not (cfg.get("model_auto") and _is_model_gone(e)):
             raise
-        # 自动模式下模型被下线：按账户最新列表重选一次再试
+        # 自动模式下模型被下线：按账户最新列表重选一次再试（请求一开始就失败，还没有输出）
         newer = _resolve_model(cfg, refresh=True)
         if newer == model:
             raise
-        return _chat_with(cfg, newer, messages, temperature, timeout)
+        return _chat_with(cfg, newer, messages, temperature, timeout, on_delta)
 
 
-def _chat_with(cfg: dict, model: str, messages: list, temperature: float, timeout: float) -> str:
+# 问答 / 打标签只是"读资料作答"，不需要深度推理：关闭思考模式。
+# 实测 kimi-k3 同一问答从 6.6~11.7 秒降到 2.3~5.8 秒（默认先输出约 70 token 的思考再作答）。
+# 只给已知支持该参数的服务商带；被拒（400 且错误信息提到该参数）时记住并去掉重试
+_NO_THINKING_BODY = {
+    "moonshot": {"thinking": {"type": "disabled"}},
+    "zhipu": {"thinking": {"type": "disabled"}},
+    "dashscope": {"enable_thinking": False},
+}
+_THINKING_REJECTED = set()  # (base_url, model)
+
+
+def _no_thinking_body(base_url: str, model: str) -> dict | None:
+    if (base_url, model) in _THINKING_REJECTED:
+        return None
+    return _NO_THINKING_BODY.get(provider_for_base_url(base_url) or "")
+
+
+def _is_thinking_rejected(e) -> bool:
+    import openai
+
+    return isinstance(e, openai.BadRequestError) and "thinking" in str(e).lower()
+
+
+def _complete(client, call: dict, on_delta) -> str:
+    """on_delta 为 None：普通请求；否则流式，每收到一段正文就回调截至目前的完整文本。"""
+    if on_delta is None:
+        resp = client.chat.completions.create(**call)
+        return resp.choices[0].message.content or ""
+    parts = []
+    for chunk in client.chat.completions.create(stream=True, **call):
+        if not chunk.choices:
+            continue
+        piece = chunk.choices[0].delta.content  # 思考内容在 reasoning_content 里，不显示
+        if piece:
+            parts.append(piece)
+            on_delta("".join(parts))
+    return "".join(parts)
+
+
+def _chat_with(cfg: dict, model: str, messages: list, temperature: float, timeout: float,
+               on_delta=None) -> str:
     kwargs = dict(model=model, messages=messages, timeout=timeout)
+    body = _no_thinking_body(cfg["base_url"], model)
+    if body:
+        kwargs["extra_body"] = body
+    use_temperature = model not in _NO_TEMPERATURE_MODELS
     client = _get_client(cfg)
-    if model not in _NO_TEMPERATURE_MODELS:
+    while True:
+        call = dict(kwargs, temperature=temperature) if use_temperature else kwargs
         try:
-            resp = client.chat.completions.create(temperature=temperature, **kwargs)
-            return resp.choices[0].message.content or ""
+            return _complete(client, call, on_delta)
         except Exception as e:
-            if not _is_temperature_rejected(e):
+            # 参数被拒在请求一开始就返回 400（流式也一样），此时还没有输出正文，可以安全重试
+            if use_temperature and _is_temperature_rejected(e):
+                _NO_TEMPERATURE_MODELS.add(model)
+                use_temperature = False  # 用服务商默认 temperature
+            elif "extra_body" in kwargs and _is_thinking_rejected(e):
+                _THINKING_REJECTED.add((cfg["base_url"], model))
+                kwargs.pop("extra_body")
+            else:
                 raise
-            _NO_TEMPERATURE_MODELS.add(model)
-    resp = client.chat.completions.create(**kwargs)  # 用服务商默认 temperature
-    return resp.choices[0].message.content or ""
 
 
 def generate_tags(text: str) -> list:

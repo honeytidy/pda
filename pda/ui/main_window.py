@@ -566,6 +566,7 @@ class RemoveWorker(QThread):
 
 
 class AskWorker(QThread):
+    partial = Signal(str)  # LLM 流式输出：截至目前的答案全文
     done = Signal(dict)
 
     def __init__(self, question, parent=None):
@@ -574,7 +575,7 @@ class AskWorker(QThread):
 
     def run(self):
         try:
-            result = qa.answer(self.question)
+            result = qa.answer(self.question, on_delta=self.partial.emit)
         except Exception as e:
             # 模型下载失败 / onnx / chroma 出错：给出可见答案并恢复输入框
             result = {"answer": f"检索失败：{type(e).__name__}: {e}", "sources": []}
@@ -723,6 +724,14 @@ class MainWindow(QMainWindow):
         self._web_toast = None       # 网页抓取单独一条 toast，不覆盖收录进度
         self._thinking_widget = None
         self._bubble_labels = []
+        # 流式回答：生成中的气泡与节流刷新（每 80ms 最多重渲染一次 Markdown）
+        self._stream_bubble = None
+        self._stream_label = None
+        self._stream_text = ""
+        self._stream_timer = QTimer(self)
+        self._stream_timer.setSingleShot(True)
+        self._stream_timer.setInterval(80)
+        self._stream_timer.timeout.connect(self._render_stream)
         self._chat_rows = []         # 聊天区每一行的 (layout, widget)，超过上限时删最早的
         # 拖动窗口边缘时 resize 事件很密：停下 50ms 后再统一重排气泡宽度
         self._refit_timer = QTimer(self)
@@ -1200,6 +1209,11 @@ class MainWindow(QMainWindow):
         return label
 
     def _add_assistant(self, text, sources, is_markdown=False):
+        bubble = self._build_assistant_bubble(text, sources, is_markdown)
+        self._add_row(bubble, "left")
+        return bubble
+
+    def _build_assistant_bubble(self, text, sources, is_markdown=False):
         bubble = QFrame()
         bubble.setObjectName("assistantBubble")
         bubble.setAccessibleName("助理：" + text[:60])
@@ -1231,7 +1245,6 @@ class MainWindow(QMainWindow):
                 link.setCursor(QCursor(Qt.PointingHandCursor))
                 link.linkActivated.connect(self._open_link)
                 layout.addWidget(link)
-        self._add_row(bubble, "left")
         return bubble
 
     # ---------- 拖放入库 ----------
@@ -1557,6 +1570,7 @@ class MainWindow(QMainWindow):
         self.send_btn.setEnabled(False)
 
         worker = AskWorker(question, parent=self)
+        worker.partial.connect(self._on_answer_partial)
         worker.done.connect(self._on_answer)
         self._keep_worker(worker)
         worker.start()
@@ -1583,10 +1597,70 @@ class MainWindow(QMainWindow):
         self._add_system_notice(f"已抓取{result['kind']}《{result['title']}》，正在收录")
         self._start_ingest([result["path"]])
 
+    def _on_answer_partial(self, text: str):
+        """流式输出：第一段正文到达时把"思考中"换成回答气泡，之后节流刷新（Markdown 渲染较重）。"""
+        self._stream_text = text
+        if self._stream_label is None:
+            self._remove_thinking()
+            bubble = QFrame()
+            bubble.setObjectName("assistantBubble")
+            bubble.setAccessibleName("助理正在回答")
+            layout = QVBoxLayout(bubble)
+            layout.setContentsMargins(10, 8, 10, 8)
+            self._stream_label = self._make_bubble_label(text, is_markdown=True)
+            layout.addWidget(self._stream_label)
+            self._stream_bubble = bubble
+            self._add_row(bubble, "left")
+            return
+        if not self._stream_timer.isActive():
+            self._stream_timer.start()
+
+    def _render_stream(self):
+        label = self._stream_label
+        if label is None or not _alive(label):
+            return
+        html, natural_w = markdown.render(self._stream_text, font_px=theme.BODY_PX, link_color=ACCENT)
+        label.setText(html)
+        est = int(natural_w) + 10
+        self._bubble_labels = [(lb, est if lb is label else e) for lb, e in self._bubble_labels]
+        self._fit_bubble_label(label, est)
+        bar = self.scroll.verticalScrollBar()
+        if bar.maximum() - bar.value() < 80:  # 用户没往上翻时才跟随到底部
+            self._scroll_to_bottom()
+
+    def _finish_stream_bubble(self, final):
+        """把流式气泡原地换成带出处的最终气泡（期间插进来的系统提示不会把回答挤到后面）。
+
+        返回 False 表示没有流式气泡（或它已被聊天记录上限清掉），由调用方新增一行。
+        """
+        self._stream_timer.stop()
+        bubble, self._stream_bubble, self._stream_label = self._stream_bubble, None, None
+        if bubble is None:
+            return False
+        replaced = False
+        for i, (row, widget) in enumerate(self._chat_rows):
+            if widget is bubble:
+                row.replaceWidget(bubble, final)
+                self._chat_rows[i] = (row, final)
+                replaced = True
+                break
+        if _alive(bubble):
+            self._bubble_labels = [(lb, e) for lb, e in self._bubble_labels
+                                   if _alive(lb) and not bubble.isAncestorOf(lb)]
+            bubble.hide()
+            bubble.deleteLater()
+        if replaced:
+            bar = self.scroll.verticalScrollBar()
+            if bar.maximum() - bar.value() < 80:
+                self._scroll_to_bottom()
+        return replaced
+
     def _on_answer(self, result):
         self._remove_thinking()
-        self._add_assistant(result["answer"], result.get("sources", []),
-                            result.get("markdown", False))
+        final = self._build_assistant_bubble(result["answer"], result.get("sources", []),
+                                             result.get("markdown", False))
+        if not self._finish_stream_bubble(final):
+            self._add_row(final, "left")
         self.input.setEnabled(True)
         self.send_btn.setEnabled(True)
         self.input.setFocus()
