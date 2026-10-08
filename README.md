@@ -10,7 +10,7 @@
 
 Windows 安装包（约 166 MB，无需安装 Python，下载后双击安装）：
 
-**[⬇ 下载最新版（v0.1.3）](https://github.com/honeytidy/pda/releases/download/v0.1.3/pda-v0.1.3.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
+**[⬇ 下载最新版（v0.1.4）](https://github.com/honeytidy/pda/releases/download/v0.1.4/pda-v0.1.4.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
 
 已安装的程序会自动检查新版本（启动时及每 6 小时），有新版时侧栏底部出现"新版本"入口，点击即可一键升级。
 
