@@ -127,3 +127,27 @@ def test_update_ui_entry_and_toast(monkeypatch):
     win._on_update_checked({"ok": True, "info": info}, manual=False)
     assert win.update_btn.isHidden()                                # 跳过的版本不再提示
     app.processEvents()
+
+
+def test_update_timer_skips_when_known_or_disabled(monkeypatch):
+    import types
+
+    from pda import config
+    from pda.ui import main_window as mw
+
+    calls = []
+    win = types.SimpleNamespace(_update_info=None, _check_update=lambda manual: calls.append(manual))
+    timer = types.MethodType(mw.MainWindow._on_update_timer, win)
+
+    monkeypatch.setattr(config, "update_check_enabled", lambda: True)
+    timer()
+    assert calls == [False]                    # 静默检查
+
+    win._update_info = {"version": "9.9.9"}
+    timer()
+    assert calls == [False]                    # 已发现新版：不重复请求
+
+    win._update_info = None
+    monkeypatch.setattr(config, "update_check_enabled", lambda: False)
+    timer()
+    assert calls == [False]                    # 设置里关掉：不检查

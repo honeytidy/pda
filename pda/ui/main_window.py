@@ -679,6 +679,7 @@ _orphan_workers = []
 # 退出时只读/联网任务（问答、抓网页、读选中项、验证 Key）最多再等这么久，之后直接放弃
 _READONLY_GRACE_SEC = 1.5
 _UPDATE_CHECK_DELAY_MS = 30_000
+_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000  # 定时检查间隔：6 小时
 
 
 def _track_side_worker(worker):
@@ -898,6 +899,11 @@ class MainWindow(QMainWindow):
         self._update_info = None  # 已发现的新版本（界面入口显示中）
         if config.update_check_enabled():
             QTimer.singleShot(_UPDATE_CHECK_DELAY_MS, lambda: self._check_update(manual=False))
+        # 托盘常驻 / 开机自启可能几天不重启：定时再查（开关每次触发时读取，设置里关掉即停）
+        self._update_timer = QTimer(self)
+        self._update_timer.setInterval(_UPDATE_CHECK_INTERVAL_MS)
+        self._update_timer.timeout.connect(self._on_update_timer)
+        self._update_timer.start()
 
         # 单实例 IPC：右键菜单 --add 转发收录 / 无参二次启动激活窗口
         # quit：卸载程序请求正常退出（先等收录写完，避免强杀损坏数据）
@@ -1825,6 +1831,11 @@ class MainWindow(QMainWindow):
             self._tray_update_act.setText(f"更新到 {info['version']}…")
             self.tray.setToolTip(f"个人助理知识库（有新版本 {info['version']}）")
 
+    def _on_update_timer(self):
+        """定时静默检查：已发现新版（入口已显示）或关掉了自动检查就不再请求。"""
+        if self._update_info is None and config.update_check_enabled():
+            self._check_update(manual=False)
+
     def _check_update(self, manual: bool):
         """manual=True：用户点了"检查更新"，没有新版 / 出错也要告诉用户；自动检查则静默。"""
         if self._shutting_down or self._update_checking or self._update_download is not None:
@@ -2205,10 +2216,21 @@ class WatchFoldersDialog(QDialog):
         self.autostart_cb.setChecked(config.autostart_enabled())
         layout.addWidget(self.autostart_cb)
 
-        self.update_cb = QCheckBox("启动后自动检查新版本（托盘菜单也可手动检查）")
+        self.update_cb = QCheckBox("自动检查新版本（启动时及每 6 小时）")
         self.update_cb.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
         self.update_cb.setChecked(config.update_check_enabled())
-        layout.addWidget(self.update_cb)
+        check_now_btn = QPushButton("立即检查")
+        check_now_btn.setAccessibleName("立即检查新版本")
+        check_now_btn.clicked.connect(self._check_update_now)
+        version_label = QLabel(f"当前版本 {__version__}")
+        version_label.setStyleSheet(f"color: {SUBTLE}; font-size: 12px;")
+        update_row = QHBoxLayout()
+        update_row.setSpacing(8)
+        update_row.addWidget(self.update_cb)
+        update_row.addStretch(1)
+        update_row.addWidget(version_label)
+        update_row.addWidget(check_now_btn)
+        layout.addLayout(update_row)
 
         # ---------- AI 问答：只填 Key，接口地址与模型自动确定 ----------
         llm_title = QLabel("AI 问答（可选；不填则只返回检索到的原文片段）：")
@@ -2355,6 +2377,12 @@ class WatchFoldersDialog(QDialog):
 
     def update_check_checked(self) -> bool:
         return self.update_cb.isChecked()
+
+    def _check_update_now(self):
+        """与侧栏入口 / 托盘菜单同一流程：已知有新版直接看说明，否则联网检查并提示结果。"""
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "_on_update_button"):
+            parent._on_update_button()
 
     def hotkey_values(self) -> dict:
         return self.hotkey_form.values()
