@@ -86,3 +86,44 @@ def test_download_verifies_sha256(monkeypatch, tmp_path):
     info["sha256"] = ""
     with pytest.raises(updater.UpdateError, match="取消"):
         updater.download(info, cancelled=lambda: True)
+
+
+def test_update_ui_entry_and_toast(monkeypatch):
+    """手动检查"已是最新"必须是结果态 toast（会自动消失）；发现新版显示侧栏入口而不是自动弹窗。"""
+    import os
+    import types
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtWidgets import QApplication, QPushButton
+
+    from pda import config
+    from pda.ui import main_window as mw
+
+    app = QApplication.instance() or QApplication([])
+    win = types.SimpleNamespace(
+        _update_checking=True, _update_download=None, _update_toast=None, _update_info=None,
+        _shutting_down=False, tray=None, update_btn=QPushButton(),
+        _progress_toast=mw.MainWindow._progress_toast)
+    for name in ("_set_update_available", "_on_update_checked"):
+        setattr(win, name, types.MethodType(getattr(mw.MainWindow, name), win))
+    prompted = []
+    win._prompt_update = prompted.append
+
+    win._on_update_checked({"ok": True, "info": None}, manual=True)
+    assert win._update_toast is not None and not win._update_toast._pending
+    win._update_toast.close()
+
+    info = {"version": "9.9.9", "notes": "", "size": 0}
+    monkeypatch.setattr(config, "skipped_version", lambda: "")
+    win._on_update_checked({"ok": True, "info": info}, manual=False)
+    assert win.update_btn.isVisibleTo(None) or not win.update_btn.isHidden()
+    assert "9.9.9" in win.update_btn.text() and prompted == []   # 自动检查不弹窗
+
+    win._on_update_checked({"ok": True, "info": info}, manual=True)
+    assert prompted == [info]                                       # 手动检查直接弹说明
+
+    monkeypatch.setattr(config, "skipped_version", lambda: "9.9.9")
+    win._set_update_available(None)
+    win._on_update_checked({"ok": True, "info": info}, manual=False)
+    assert win.update_btn.isHidden()                                # 跳过的版本不再提示
+    app.processEvents()

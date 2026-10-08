@@ -265,6 +265,18 @@ QPushButton#settingsButton {{
 QPushButton#settingsButton:hover {{
     color: {ACCENT};
 }}
+/* 有新版本时出现在设置/快捷键旁的常驻入口 */
+QPushButton#updateButton {{
+    background: #EEF3FE;
+    border: none;
+    border-radius: 10px;
+    color: {ACCENT};
+    font-size: 12px;
+    padding: 2px 10px;
+}}
+QPushButton#updateButton:hover {{
+    background: #DCE6FD;
+}}
 /* ---------- 对话框 ---------- */
 QDialog {{
     background: {BG};
@@ -833,11 +845,18 @@ class MainWindow(QMainWindow):
         self.hotkeys_btn.setToolTip("修改全局快捷键")
         self.hotkeys_btn.setAccessibleName("修改全局快捷键")
         self.hotkeys_btn.clicked.connect(self._open_hotkey_settings)
+        # 新版本入口：平时隐藏；检查到新版后常驻显示，点开才弹升级说明（不在启动时打断用户）
+        self.update_btn = QPushButton()
+        self.update_btn.setObjectName("updateButton")
+        self.update_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.update_btn.clicked.connect(self._on_update_button)
+        self.update_btn.hide()
         footer = QHBoxLayout()
         footer.setSpacing(4)
         footer.addStretch(1)
         footer.addWidget(self.settings_btn)
         footer.addWidget(self.hotkeys_btn)
+        footer.addWidget(self.update_btn)
         footer.addStretch(1)
         side_layout.addLayout(footer)
         splitter.addWidget(side_widget)
@@ -876,6 +895,7 @@ class MainWindow(QMainWindow):
         self._update_checking = False
         self._update_download = None
         self._update_toast = None
+        self._update_info = None  # 已发现的新版本（界面入口显示中）
         if config.update_check_enabled():
             QTimer.singleShot(_UPDATE_CHECK_DELAY_MS, lambda: self._check_update(manual=False))
 
@@ -907,8 +927,8 @@ class MainWindow(QMainWindow):
             tray_menu = QMenu()
             act_show = tray_menu.addAction("显示主窗口")
             act_show.triggered.connect(self._restore_from_tray)
-            act_update = tray_menu.addAction("检查更新")
-            act_update.triggered.connect(lambda: self._check_update(manual=True))
+            self._tray_update_act = tray_menu.addAction("检查更新")
+            self._tray_update_act.triggered.connect(self._on_update_button)
             act_quit = tray_menu.addAction("退出")
             act_quit.triggered.connect(self._quit_app)
             self.tray.setContextMenu(tray_menu)
@@ -1775,14 +1795,39 @@ class MainWindow(QMainWindow):
             self.input.selectAll()  # 上次没发出去的问题保留，直接打字即覆盖
 
     # ---------- 自动升级 ----------
+    # 自动检查发现新版本时不弹窗打断：侧栏底部出现"新版本 x.y.z"入口、托盘菜单项同步改名，
+    # 用户点开才看更新说明并决定是否升级（VS Code / Chrome 同类做法）。手动检查则直接弹出说明。
+
+    def _on_update_button(self):
+        """侧栏入口 / 托盘菜单：已知有新版就直接看说明，否则联网检查。"""
+        if self._update_download is not None:
+            show_toast("正在下载新版本，请稍候…")
+        elif self._update_info is not None:
+            self._prompt_update(self._update_info)
+        else:
+            self._check_update(manual=True)
+
+    def _set_update_available(self, info):
+        """显示 / 隐藏新版本入口（info=None 隐藏）。"""
+        self._update_info = info
+        if info is None:
+            self.update_btn.hide()
+            if self.tray is not None:
+                self._tray_update_act.setText("检查更新")
+                self.tray.setToolTip("个人助理知识库")
+            return
+        label = f"新版本 {info['version']}"
+        self.update_btn.setText(label)
+        self.update_btn.setToolTip(f"知识库助理 {info['version']} 已发布（当前 {__version__}），点击查看并更新")
+        self.update_btn.setAccessibleName(f"有新版本 {info['version']}，点击查看并更新")
+        self.update_btn.show()
+        if self.tray is not None:
+            self._tray_update_act.setText(f"更新到 {info['version']}…")
+            self.tray.setToolTip(f"个人助理知识库（有新版本 {info['version']}）")
 
     def _check_update(self, manual: bool):
-        """manual=True：托盘菜单"检查更新"，没有新版 / 出错也要告诉用户；自动检查则静默。"""
-        if self._shutting_down or self._update_checking:
-            return
-        if self._update_download is not None:
-            if manual:
-                show_toast("正在下载新版本…")
+        """manual=True：用户点了"检查更新"，没有新版 / 出错也要告诉用户；自动检查则静默。"""
+        if self._shutting_down or self._update_checking or self._update_download is not None:
             return
         self._update_checking = True
         if manual:
@@ -1803,16 +1848,20 @@ class MainWindow(QMainWindow):
             return
         info = result["info"]
         if info is None:
+            self._set_update_available(None)
             if manual:
+                # 必须带 success=：不带就是进度态，要等 30 秒兜底超时才消失
                 self._update_toast = self._progress_toast(
-                    self._update_toast, f"已是最新版本（{__version__}）")
+                    self._update_toast, f"已是最新版本（{__version__}）", success=True)
             return
         if self._update_toast is not None and self._update_toast.is_alive():
             self._update_toast.close()
         self._update_toast = None
         if not manual and info["version"] == config.skipped_version():
-            return
-        self._prompt_update(info)
+            return  # 用户跳过的版本：自动检查不再提示，手动检查仍可升级
+        self._set_update_available(info)
+        if manual:
+            self._prompt_update(info)
 
     def _prompt_update(self, info: dict):
         notes = info["notes"][:800] + ("…" if len(info["notes"]) > 800 else "")
@@ -1834,6 +1883,7 @@ class MainWindow(QMainWindow):
         clicked = box.clickedButton()
         box.deleteLater()
         if clicked is skip_btn:
+            self._set_update_available(None)
             try:
                 config.save_update_prefs(skipped=info["version"])
             except (config.ConfigError, OSError) as e:
@@ -1847,6 +1897,7 @@ class MainWindow(QMainWindow):
 
     def _start_update_download(self, info: dict):
         self._update_toast = self._progress_toast(self._update_toast, "正在下载新版本…")
+        self.update_btn.setText("正在下载…")
         worker = UpdateDownloadWorker(info, self)
         worker.progress.connect(self._on_update_progress)
         worker.done.connect(self._on_update_downloaded)
@@ -1855,15 +1906,18 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _on_update_progress(self, pct: int):
-        text = f"正在下载新版本… {pct}%" if pct >= 0 else "正在下载新版本…"
-        self._update_toast = self._progress_toast(self._update_toast, text)
-        self.statusBar().showMessage(text)
+        # 进度显示在侧栏入口上（toast 30 秒兜底会消失，下载可能更久）
+        self.update_btn.setText(f"正在下载 {pct}%" if pct >= 0 else "正在下载…")
+        if self._update_toast is not None and self._update_toast.is_alive():
+            self._update_toast.update(f"正在下载新版本… {pct}%" if pct >= 0 else "正在下载新版本…",
+                                      pending=True)
 
     def _on_update_downloaded(self, result: dict):
         self._update_download = None
         if self._shutting_down:
             return
         if not result["ok"]:
+            self._set_update_available(self._update_info)  # 入口恢复成"新版本 x.y.z"，可重试
             self._update_toast = self._progress_toast(
                 self._update_toast, f"更新失败：{result['error']}", success=False)
             self.statusBar().showMessage(f"更新失败：{result['error']}")
@@ -1874,15 +1928,18 @@ class MainWindow(QMainWindow):
                 "新版本已下载完成。还有文档正在收录，安装前会等收录写完再退出。\n现在安装吗？",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
             if ret != QMessageBox.Yes:
+                self._set_update_available(self._update_info)
                 self._update_toast = self._progress_toast(
-                    self._update_toast, "已取消安装，下次检查更新时可再安装", success=False)
+                    self._update_toast, "已取消安装，可随时点击侧栏的新版本入口再安装", success=False)
                 return
         try:
             updater.launch_installer(result["path"])
         except OSError as e:
+            self._set_update_available(self._update_info)
             self._update_toast = self._progress_toast(
                 self._update_toast, f"启动安装程序失败：{e}", success=False)
             return
+        self.update_btn.setText("正在安装…")
         self._update_toast = self._progress_toast(self._update_toast, "正在安装新版本，完成后自动重启…")
         # 退出让出文件锁和 DLL；安装程序启动时也会先发 --quit 并等待本进程退出
         QTimer.singleShot(0, self._quit_app)
