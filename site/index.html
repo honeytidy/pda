@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知识库助理 · 你的个人 AI 知识库</title>
+<meta name="description" content="知识库助理：把电脑上的文档拖进来即入库，用自然语言提问，AI 给出带出处的答案。本地检索，支持 Kimi、DeepSeek、通义千问等模型。">
+<link rel="icon" href="assets/icon.png">
+<!-- 模板：scripts/publish_release.py 发布时替换双花括号占位符后上传到 https://aitool.center/pda/ -->
+<style>
+  :root {
+    --brand: #2f5bea;
+    --brand-dark: #1f43c2;
+    --ink: #0f172a;
+    --ink-2: #334155;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --bg-soft: #f6f8fc;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; color: var(--ink); background: #fff; line-height: 1.65;
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--brand); }
+  /* width/height 属性只用来预留比例，实际尺寸跟随容器：height:auto 防止被拉伸变形 */
+  img, video { max-width: 100%; height: auto; display: block; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+  .skip { position: absolute; left: -999px; }
+  .skip:focus { left: 16px; top: 12px; background: #fff; padding: 8px 12px; z-index: 10; }
+  :focus-visible { outline: 3px solid #93b4ff; outline-offset: 2px; border-radius: 6px; }
+  kbd { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; padding: 1px 6px;
+        border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 5px; background: #fff;
+        color: var(--ink); white-space: nowrap; }
+
+  /* 顶栏 */
+  header.nav { position: sticky; top: 0; z-index: 5; background: rgba(255,255,255,.88);
+               backdrop-filter: saturate(180%) blur(12px); border-bottom: 1px solid var(--line); }
+  .nav .wrap { display: flex; align-items: center; height: 56px; }
+  .logo { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 16px;
+          color: var(--ink); text-decoration: none; }
+  .logo img { width: 26px; height: 26px; }
+  .nav nav { margin-left: auto; }
+  .nav ul { display: flex; align-items: center; gap: 24px; list-style: none; margin: 0; padding: 0; }
+  .nav ul a:not(.btn) { color: var(--ink-2); text-decoration: none; font-size: 14.5px; }
+  .nav ul a:not(.btn):hover { color: var(--brand); }
+
+  /* 按钮 */
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 26px; border-radius: 10px;
+         font-size: 16px; font-weight: 600; text-decoration: none; background: var(--brand); color: #fff;
+         box-shadow: 0 6px 18px rgba(47,91,234,.28); transition: background .15s, transform .15s; }
+  .btn:hover { background: var(--brand-dark); transform: translateY(-1px); }
+  .btn svg { width: 18px; height: 18px; }
+  .btn-sm { padding: 6px 16px; font-size: 14px; box-shadow: none; }
+  .btn-ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+  .btn-ghost:hover { background: var(--bg-soft); }
+
+  /* 首屏：左文右图 */
+  .hero { padding: 56px 0 60px;
+          background: radial-gradient(700px 360px at 85% 10%, rgba(140,130,255,.16), transparent 60%),
+                      radial-gradient(700px 360px at 10% 0%, rgba(110,150,255,.16), transparent 60%),
+                      linear-gradient(#f8faff, #fff); }
+  .hero .wrap { display: grid; grid-template-columns: 1fr 1.15fr; gap: 48px; align-items: center; }
+  .hero .wrap > * { min-width: 0; }
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12.5px;
+           color: var(--brand); background: rgba(47,91,234,.08); border: 1px solid rgba(47,91,234,.18); }
+  .hero h1 { font-size: clamp(30px, 4vw, 44px); line-height: 1.22; margin: 16px 0 14px; font-weight: 800; }
+  .hero h1 em { font-style: normal; background: linear-gradient(90deg, #2f5bea, #7b4dff);
+                -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { font-size: 16.5px; color: var(--ink-2); margin: 0; }
+  .steps { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 18px 0 0; padding: 0; list-style: none;
+           font-size: 14.5px; color: var(--ink-2); counter-reset: s; }
+  .steps li::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center;
+                      width: 20px; height: 20px; margin-right: 6px; border-radius: 50%; font-size: 12px;
+                      font-weight: 700; color: #fff; background: var(--brand); }
+  .cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 26px 0 10px; }
+  .meta { color: var(--muted); font-size: 13px; margin: 0; }
+  .shot { width: 100%; border-radius: 12px; border: 1px solid var(--line);
+          box-shadow: 0 24px 60px rgba(15,23,42,.16), 0 3px 10px rgba(15,23,42,.06); }
+
+  /* 分区 */
+  section { padding: 56px 0; }
+  section.soft { background: var(--bg-soft); }
+  .head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 24px; }
+  h2 { font-size: clamp(22px, 2.6vw, 28px); line-height: 1.3; margin: 0; font-weight: 800; }
+  .head p { margin: 0; color: var(--muted); font-size: 15px; }
+
+  /* 功能：图标 + 标题 + 一句话 */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .f { display: flex; gap: 14px; padding: 18px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .ico { flex: none; width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+         background: rgba(47,91,234,.09); color: var(--brand); }
+  .ico svg { width: 20px; height: 20px; }
+  .f h3 { font-size: 16px; margin: 0 0 3px; }
+  .f p { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+  /* 收录方式 + 演示视频 */
+  .duo { display: grid; grid-template-columns: 1fr 1.2fr; gap: 40px; align-items: start; }
+  .duo > * { min-width: 0; }
+  .ways { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  .ways li { display: grid; grid-template-columns: 128px 1fr; gap: 12px; padding: 11px 0;
+             border-bottom: 1px solid var(--line); font-size: 14.5px; color: var(--ink-2); }
+  .ways b { color: var(--ink); font-weight: 600; }
+  .video { border-radius: 12px; overflow: hidden; background: #0f172a; box-shadow: 0 18px 44px rgba(15,23,42,.16); }
+  .video video { width: 100%; }
+  .duo h3 { font-size: 17px; margin: 0 0 12px; }
+
+  /* 下载条 */
+  .download { display: grid; grid-template-columns: 1fr auto; gap: 20px 32px; align-items: center;
+              padding: 32px 36px; border-radius: 18px; color: #fff;
+              background: radial-gradient(500px 240px at 15% 0%, rgba(255,255,255,.18), transparent 60%),
+                          linear-gradient(135deg, #2f5bea, #5b3ff0); }
+  .download > * { min-width: 0; }
+  .download h2 { color: #fff; }
+  .download p { margin: 6px 0 0; color: rgba(255,255,255,.85); font-size: 14.5px; }
+  .download .btn { background: #fff; color: var(--brand-dark); box-shadow: 0 8px 22px rgba(0,0,0,.18); }
+  .download .btn:hover { background: #eef2ff; }
+  .download .small { grid-column: 1 / -1; font-size: 12.5px; color: rgba(255,255,255,.75);
+                     border-top: 1px solid rgba(255,255,255,.2); padding-top: 14px; margin: 0; }
+  .download .small a { color: #fff; }
+  .download code { font-family: Consolas, monospace; word-break: break-all; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .chip { padding: 3px 12px; border-radius: 999px; font-size: 13px; color: #fff;
+          background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); }
+
+  /* 常见问题：两列 */
+  .faq { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+  details { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+  details.wide { grid-column: 1 / -1; }
+  summary { cursor: pointer; font-weight: 600; font-size: 15px; list-style: none; position: relative; padding-right: 24px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; position: absolute; right: 0; top: -3px; font-size: 20px; color: var(--muted); }
+  details[open] summary::after { content: "−"; }
+  details p, details pre { color: var(--ink-2); font-size: 14px; margin: 8px 0 0; }
+  .notes { white-space: pre-wrap; font-family: inherit; }
+
+  footer { border-top: 1px solid var(--line); padding: 22px 0; color: var(--muted); font-size: 13px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 24px; justify-content: space-between; }
+  footer a { color: var(--muted); }
+
+  @media (max-width: 900px) {
+    .hero .wrap, .duo { grid-template-columns: 1fr; gap: 32px; }
+    .features { grid-template-columns: 1fr 1fr; }
+    .nav ul li.hide-m { display: none; }
+  }
+  @media (max-width: 640px) {
+    .features, .faq { grid-template-columns: 1fr; }
+    .download { grid-template-columns: 1fr; padding: 26px 22px; }
+    .ways li { grid-template-columns: 1fr; gap: 2px; }
+    section { padding: 44px 0; }
+    .hero { padding: 36px 0 44px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#top"><img src="assets/icon.png" alt="">知识库助理</a>
+    <nav aria-label="主导航">
+      <ul>
+        <li class="hide-m"><a href="#features">功能</a></li>
+        <li class="hide-m"><a href="#ways">收录与演示</a></li>
+        <li><a href="#faq">常见问题</a></li>
+        <li><a class="btn btn-sm" href="{{FILE}}">下载</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <div class="hero" id="top">
+    <div class="wrap">
+      <div>
+        <span class="badge">v{{VERSION}} · Windows 10 / 11</span>
+        <h1>把散落的文档，<br>变成<em>随问随答</em>的知识库</h1>
+        <p class="lead">拖进来就收录，用一句话提问。答案标明出自哪份文件、哪一段，点一下就能打开原文。</p>
+        <ol class="steps">
+          <li>拖入文档</li>
+          <li>直接提问</li>
+          <li>点出处看原文</li>
+        </ol>
+        <div class="cta">
+          <a class="btn" href="{{FILE}}" download>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+            免费下载 v{{VERSION}}
+          </a>
+          <a class="btn btn-ghost" href="#ways">看 1 分钟演示</a>
+        </div>
+        <p class="meta">安装包 {{SIZE_MB}} MB · 无需安装 Python · 程序内自动升级</p>
+      </div>
+      <img class="shot" src="assets/shot-answer.jpg" width="1160" height="722"
+           alt="知识库助理主界面：用户提问“上次会议纪要里发布会定在哪天”，助理回答“11 月 15 日，地点为公司大会议室”，并列出两条可点击的出处">
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="head">
+        <h2>核心功能</h2>
+        <p>会议纪要、合同、报表、讲义、截图，放进来之后问一句就能找到。</p>
+      </div>
+      <div class="features">
+        <div class="f">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg></div>
+          <div><h3>拖进来就收录</h3><p>文件、文件夹、剪贴板、网页链接都能收，后台入库不卡顿。</p></div>
+        </div>
+        <div class="f">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/></svg></div>
+          <div><h3>自然语言提问</h3><p>不用记文件名，像问同事一样提问，可限定“只看《某文档》”。</p></div>
+        </div>
+        <div class="f">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12l2 2 4-4M7 3h8l4 4v12a2 2 0 01-2 2H7a2 2 0 01-2-2V5a2 2 0 012-2z"/></svg></div>
+          <div><h3>答案都有出处</h3><p>列出引用的文档和片段，点击即打开原文件核对。</p></div>
+        </div>
+        <div class="f">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H4zM8 20h8M12 16v4"/></svg></div>
+          <div><h3>常见格式全支持</h3><p>PDF、Word、Excel、PPT、Markdown、TXT，图片自动 OCR。</p></div>
+        </div>
+        <div class="f">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></div>
+          <div><h3>资料留在本机</h3><p>解析和检索都在本地，只把相关片段发给你选的模型。</p></div>
+        </div>
+        <div class="f">
+          <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/></svg></div>
+          <div><h3>随叫随到</h3><p>常驻托盘，任意程序里按 <kbd>Ctrl+Alt+Space</kbd> 呼出。</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="ways" class="soft">
+    <div class="wrap duo">
+      <div>
+        <h3>六种收录方式</h3>
+        <ul class="ways">
+          <li><b>拖放</b><span>拖入文件或整个文件夹</span></li>
+          <li><b>剪贴板</b><span>复制文字后按 <kbd>Ctrl+Shift+Q</kbd></span></li>
+          <li><b>资源管理器</b><span>选中文件后按 <kbd>Ctrl+Shift+A</kbd></span></li>
+          <li><b>右键菜单</b><span>文件上右键“添加到知识库助理”</span></li>
+          <li><b>监控文件夹</b><span>下载目录等新文件自动收录</span></li>
+          <li><b>网页链接</b><span>粘贴网址发送，抓取正文入库</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3>一分钟演示</h3>
+        <div class="video">
+          <video controls preload="none" poster="assets/video-poster.jpg" width="1280" height="720">
+            <source src="assets/intro.mp4" type="video/mp4">
+            你的浏览器不支持视频播放，可<a href="assets/intro.mp4">下载演示视频</a>观看。
+          </video>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="download">
+    <div class="wrap">
+      <div class="download">
+        <div>
+          <h2>免费下载，双击安装</h2>
+          <p>不配置 API Key 也能检索原文；配置后由 AI 整理回答，支持以下模型及任何 OpenAI 兼容接口：</p>
+          <div class="chips">
+            <span class="chip">Kimi</span><span class="chip">DeepSeek</span><span class="chip">通义千问</span>
+            <span class="chip">智谱 GLM</span><span class="chip">硅基流动</span><span class="chip">OpenAI</span>
+            <span class="chip">OpenRouter</span><span class="chip">Claude</span>
+          </div>
+        </div>
+        <a class="btn" href="{{FILE}}" download>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          下载 v{{VERSION}}（{{SIZE_MB}} MB）
+        </a>
+        <p class="small">Windows 10 / 11 64 位 · 备用下载：<a href="{{GITHUB_URL}}">GitHub</a> · SHA-256：<code>{{SHA256}}</code></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="soft">
+    <div class="wrap">
+      <div class="head"><h2>常见问题</h2></div>
+      <div class="faq">
+        <details class="wide">
+          <summary>v{{VERSION}} 更新了什么？</summary>
+          <pre class="notes">{{NOTES}}</pre>
+        </details>
+        <details>
+          <summary>需要付费吗？</summary>
+          <p>软件免费。AI 回答使用你自己的大模型 API Key，费用由服务商按用量收取。</p>
+        </details>
+        <details>
+          <summary>我的文档会被上传吗？</summary>
+          <p>不会整份上传。提问时只发送检索到的相关片段；入库时发送开头约 1500 字生成标签，可在配置中关闭。</p>
+        </details>
+        <details>
+          <summary>如何升级？</summary>
+          <p>程序启动时及每 6 小时检查新版本，侧栏底部出现“新版本”入口，点击即可自动升级。</p>
+        </details>
+        <details>
+          <summary>提示“Windows 已保护你的电脑”？</summary>
+          <p>安装包暂未做代码签名。点“更多信息”→“仍要运行”即可，可用上方 SHA-256 校验文件。</p>
+        </details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 知识库助理 · aitool.center · <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">京ICP备2021019594号-1</a></span>
+    <span><a href="{{RELEASES_PAGE}}">全部版本</a> · <a href="https://github.com/honeytidy/pda">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>
