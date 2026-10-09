@@ -66,8 +66,6 @@ pip install -r requirements.txt
 python run.py
 ```
 
-
-
 ## Windows 右键菜单
 
 安装（per-user 注册表，不需要管理员权限）：
