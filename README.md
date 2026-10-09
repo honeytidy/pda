@@ -10,7 +10,7 @@
 
 Windows 安装包（约 166 MB，无需安装 Python，下载后双击安装）：
 
-**[⬇ 下载最新版（v0.1.4）](https://github.com/honeytidy/pda/releases/download/v0.1.4/pda-v0.1.4.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
+**[⬇ 下载最新版（v0.1.5）](https://github.com/honeytidy/pda/releases/download/v0.1.5/pda-v0.1.5.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
 
 国内用户可从镜像下载（速度更快）：**[aitool.center/pda](https://aitool.center/pda/)**
 
