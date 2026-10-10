@@ -193,7 +193,7 @@
           </a>
           <a class="btn btn-ghost" href="#ways">看 1 分钟演示</a>
         </div>
-        <p class="meta">安装包 {{SIZE_MB}} MB · 无需安装 Python · 程序内自动升级</p>
+        <p class="meta">安装包 {{SIZE_MB}} MB · 无需安装 Python · 程序内自动升级 · <a href="{{PORTABLE_FILE}}" download>便携版 zip</a>（{{PORTABLE_SIZE_MB}} MB，解压即用）</p>
       </div>
       <img class="shot" src="assets/shot-answer.jpg" width="1160" height="722"
            alt="知识库助理主界面：用户提问“上次会议纪要里发布会定在哪天”，助理回答“11 月 15 日，地点为公司大会议室”，并列出两条可点击的出处">
@@ -276,6 +276,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
           下载 v{{VERSION}}（{{SIZE_MB}} MB）
         </a>
+        <p class="small">不想安装？<a href="{{PORTABLE_FILE}}" download>下载便携版 zip</a>（{{PORTABLE_SIZE_MB}} MB）：解压后双击 pda.exe，数据存在解压目录里，需手动下载新版替换</p>
         <p class="small">Windows 10 / 11 64 位 · 备用下载：<a href="{{GITHUB_URL}}">GitHub</a> · SHA-256：<code>{{SHA256}}</code></p>
       </div>
     </div>

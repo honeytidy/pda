@@ -3,14 +3,16 @@
 
 用法：
   python scripts/build_exe.py --installer     # 先打安装包
+  python scripts/make_release.py              # 再打便携 zip
   python scripts/publish_release.py [--notes 更新说明.md] [--draft]
 
 需要已登录的 GitHub CLI（gh auth login）。版本号取 pda/__init__.py 的 __version__，
-tag 为 v<版本>；上传的资源名 pda-v<版本>.exe（updater 取 release 里第一个 .exe）。
+tag 为 v<版本>；上传的资源名 pda-v<版本>.exe（updater 取 release 里第一个 .exe）
+和便携版 pda-v<版本>-portable.zip（解压即用，不参与自动升级）。
 GitHub 会为资源自动计算 sha256 digest，客户端下载后用它校验完整性。
 正式发布成功后：
   1. 同步到国内镜像（阿里云 ECS，https://aitool.center/pda/）：scp 上传安装包，最后写 latest.json，
-     只保留最近 KEEP_VERSIONS 个安装包。需要本机 ssh 密钥能登录 MIRROR_HOST。
+     只保留最近 KEEP_VERSIONS 个版本的安装包 / 便携 zip。需要本机 ssh 密钥能登录 MIRROR_HOST。
   2. 把 README 的"下载最新版"链接换成新版本，并提交、推送到当前分支。
 --mirror-only 只做第 1 步、--readme-only 只做第 2 步（例如草稿在网页上转正式之后）。
 """
@@ -62,11 +64,16 @@ def main():
     if not installer.is_file():
         sys.exit(f"错误：未找到 {installer}，先跑 python scripts/build_exe.py --installer")
 
+    portable = portable_zip()
+
     # 资源名用 ASCII：中文文件名在 GitHub 下载链接里会被改写
     with tempfile.TemporaryDirectory() as tmp:
         asset = Path(tmp) / f"pda-{tag}.exe"
         shutil.copy2(installer, asset)
-        cmd = ["gh", "release", "create", tag, str(asset), "-R", REPO, "--title", tag]
+        zip_asset = Path(tmp) / portable_name(tag)
+        shutil.copy2(portable, zip_asset)
+        cmd = ["gh", "release", "create", tag, str(asset), str(zip_asset),
+               "-R", REPO, "--title", tag]
         if args.notes:
             cmd += ["--notes-file", args.notes]
         else:
@@ -83,6 +90,21 @@ def main():
         update_readme(tag)
 
 
+def portable_name(tag: str) -> str:
+    return f"pda-{tag}-portable.zip"
+
+
+def portable_zip() -> Path:
+    """make_release.py 的产物；必须比当前 dist/pda/main.exe 新，避免发出旧构建的 zip。"""
+    zip_path = ROOT / "dist" / "知识库助理_portable.zip"
+    main_exe = ROOT / "dist" / "pda" / "main.exe"
+    if not zip_path.is_file():
+        sys.exit(f"错误：未找到 {zip_path}，先跑 python scripts/make_release.py")
+    if main_exe.is_file() and zip_path.stat().st_mtime < main_exe.stat().st_mtime:
+        sys.exit(f"错误：{zip_path} 比 dist/pda/main.exe 旧，重新跑 python scripts/make_release.py")
+    return zip_path
+
+
 def sync_mirror(tag: str, notes_file: str | None = None):
     """把安装包、latest.json 和首页传到国内镜像。latest.json 最后改名：客户端看到新版本时安装包已经就位。"""
     version = tag.lstrip("v")
@@ -90,6 +112,8 @@ def sync_mirror(tag: str, notes_file: str | None = None):
     if not installer.is_file():
         sys.exit(f"错误：未找到 {installer}")
     name = f"pda-{tag}.exe"
+    portable = portable_zip()
+    zip_name = portable_name(tag)
     sha = hashlib.sha256()
     with open(installer, "rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -103,6 +127,8 @@ def sync_mirror(tag: str, notes_file: str | None = None):
         "notes": notes,
         "github_url": f"https://github.com/{REPO}/releases/download/{tag}/{name}",
         "page": f"https://github.com/{REPO}/releases/tag/{tag}",
+        "portable_name": zip_name,
+        "portable_size": portable.stat().st_size,
     }
     ssh = ["ssh", "-o", "BatchMode=yes", MIRROR_HOST]
     with tempfile.TemporaryDirectory() as tmp:
@@ -114,6 +140,8 @@ def sync_mirror(tag: str, notes_file: str | None = None):
         # 先传 .tmp 再改名：上传中途失败不会留下半截的正式文件
         subprocess.run(["scp", "-o", "BatchMode=yes", str(installer),
                         f"{MIRROR_HOST}:{MIRROR_DIR}/{name}.tmp"], check=True)
+        subprocess.run(["scp", "-o", "BatchMode=yes", str(portable),
+                        f"{MIRROR_HOST}:{MIRROR_DIR}/{zip_name}.tmp"], check=True)
         for f in (meta, page):
             subprocess.run(["scp", "-o", "BatchMode=yes", str(f),
                             f"{MIRROR_HOST}:{MIRROR_DIR}/{f.name}.tmp"], check=True)
@@ -123,10 +151,11 @@ def sync_mirror(tag: str, notes_file: str | None = None):
                     *[str(f) for f in sorted((SITE_DIR / "assets").iterdir()) if f.is_file()],
                     f"{MIRROR_HOST}:{MIRROR_DIR}/assets/"], check=True)
     # 安装包就位后再替换 latest.json / 下载页；只保留最近几个版本的安装包
-    remote = (f"cd {MIRROR_DIR} && mv -f {name}.tmp {name}"
+    remote = (f"cd {MIRROR_DIR} && mv -f {name}.tmp {name} && mv -f {zip_name}.tmp {zip_name}"
               f" && mv -f latest.json.tmp latest.json && mv -f index.html.tmp index.html"
-              f" && chmod 644 {name} latest.json index.html assets/*"
-              f" && ls -t pda-v*.exe | tail -n +{KEEP_VERSIONS + 1} | xargs -r rm -f")
+              f" && chmod 644 {name} {zip_name} latest.json index.html assets/*"
+              f" && ls -t pda-v*.exe | tail -n +{KEEP_VERSIONS + 1} | xargs -r rm -f"
+              f" && ls -t pda-v*-portable.zip | tail -n +{KEEP_VERSIONS + 1} | xargs -r rm -f")
     subprocess.run(ssh + [remote], check=True)
     print(f"镜像已更新：https://aitool.center/pda/{name}")
 
@@ -140,6 +169,8 @@ def download_page(latest: dict) -> str:
         "FILE": latest["name"],
         "SIZE_MB": f"{latest['size'] / 1024 / 1024:.0f}",
         "SHA256": latest["sha256"],
+        "PORTABLE_FILE": latest["portable_name"],
+        "PORTABLE_SIZE_MB": f"{latest['portable_size'] / 1024 / 1024:.0f}",
         "NOTES": latest.get("notes") or "本次为常规更新。",
         "GITHUB_URL": latest["github_url"],
         "RELEASES_PAGE": f"https://github.com/{REPO}/releases",
@@ -157,6 +188,10 @@ _README_LINK = re.compile(
     r"\[⬇ 下载最新版（v[\d.]+）\]\(https://github\.com/" + re.escape(REPO)
     + r"/releases/download/v[\d.]+/pda-v[\d.]+\.exe\)")
 
+_README_PORTABLE = re.compile(
+    r"\[便携版 zip（解压即用）\]\(https://github\.com/" + re.escape(REPO)
+    + r"/releases/download/v[\d.]+/pda-v[\d.]+-portable\.zip\)")
+
 
 def update_readme(tag: str):
     """release 发布成功后把 README 下载链接换成新版本，并提交、推送到当前分支。
@@ -168,6 +203,9 @@ def update_readme(tag: str):
     new_link = (f"[⬇ 下载最新版（{tag}）](https://github.com/{REPO}"
                 f"/releases/download/{tag}/pda-{tag}.exe)")
     new_text, n = _README_LINK.subn(new_link, text)
+    new_text = _README_PORTABLE.sub(
+        f"[便携版 zip（解压即用）](https://github.com/{REPO}/releases/download/{tag}/{portable_name(tag)})",
+        new_text)
     if n == 0:
         print("警告：README 里没找到“下载最新版”链接，未更新")
         return
