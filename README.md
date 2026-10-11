@@ -10,9 +10,9 @@
 
 Windows 安装包（约 166 MB，无需安装 Python，下载后双击安装）：
 
-**[⬇ 下载最新版（v0.1.5）](https://github.com/honeytidy/pda/releases/download/v0.1.5/pda-v0.1.5.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
+**[⬇ 下载最新版（v0.1.6）](https://github.com/honeytidy/pda/releases/download/v0.1.6/pda-v0.1.6.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
 
-不想安装可用 **[便携版 zip（解压即用）](https://github.com/honeytidy/pda/releases/download/v0.1.5/pda-v0.1.5-portable.zip)**（约 226 MB）：解压到任意目录，双击 `pda.exe` 运行，数据保存在该目录的 `data\` 下；便携版不自动升级，新版请解压到新目录，再把旧目录的 `data\` 整个拷过去（直接解压覆盖旧目录会留下旧版多余的依赖文件，不影响使用但占空间）。
+不想安装可用 **[便携版 zip（解压即用）](https://github.com/honeytidy/pda/releases/download/v0.1.6/pda-v0.1.6-portable.zip)**（约 226 MB）：解压到任意目录，双击 `pda.exe` 运行，数据保存在该目录的 `data\` 下；便携版不自动升级，新版请解压到新目录，再把旧目录的 `data\` 整个拷过去（直接解压覆盖旧目录会留下旧版多余的依赖文件，不影响使用但占空间）。
 
 国内用户可从镜像下载（速度更快）：**[aitool.center/pda](https://aitool.center/pda/)**
 
