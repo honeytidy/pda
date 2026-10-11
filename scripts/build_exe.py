@@ -92,6 +92,26 @@ EXCLUDES = [
     "rich", "pygments",
     # 仅 pptx 生成图表时用（pptx.chart.xlsx），本应用只读 pptx
     "xlsxwriter",
+    # 以下均只经可选导入（try/except ImportError 或函数内延迟导入）进来，运行时不加载：
+    # aiohttp 全家：openai 的可选 aiohttp 客户端（try 兜底）、fsspec 的 http 后端
+    "aiohttp", "aiodns", "pycares", "winloop", "aiohappyeyeballs", "aiosignal",
+    "frozenlist", "yarl", "multidict", "propcache",
+    # setuptools：urllib3/httpx2 对 backports.zstd 的 try 导入把它拖进来（3.14 用标准库 zstd）
+    "setuptools", "_distutils_hack", "pkg_resources", "distutils", "wheel",
+    # 无任何导入方（conda 环境残留）/ anyio 测试插件里的延迟导入
+    "plotly", "_plotly_utils", "_pytest", "pluggy",
+    # jinja2：huggingface_hub 模型卡模板（is_jinja_available 兜底）、fsspec reference
+    "jinja2", "markupsafe",
+    # fsspec 的 libarchive / ujson 可选后端；httpx 的 zstandard 解码（try 兜底）
+    "libarchive", "ujson", "zstandard",
+    # bcrypt：cryptography ssh 密钥（try 兜底）、chromadb 服务端认证
+    "bcrypt",
+    # pywin32 的 MFC 界面库：只有 makepy 代码生成会用，Dispatch 走动态调度
+    "win32ui", "pywin",
+    # help() 文档数据；httpx 命令行入口与 huggingface_hub CLI
+    "pydoc_data", "click",
+    # lxml 里本应用不用的子模块（只用 lxml.html + readability）
+    "lxml.objectify", "lxml.html.diff", "lxml.html._difflib",
 ]
 
 # PyInstaller 跑完后从 dist/pda/_internal 删掉的文件（相对 _internal）。
@@ -109,6 +129,21 @@ PRUNE = [
     "PySide6/plugins/platforms/qdirect2d.dll",
     "PySide6/plugins/platforms/qoffscreen.dll",
     "PySide6/plugins/platforms/qminimal.dll",
+    # Qt SVG：界面图标由代码绘制，不加载 svg
+    "Qt6Svg.dll", "PySide6/plugins/iconengines/qsvgicon.dll",
+    "PySide6/plugins/imageformats/qsvg.dll",
+    # onnxruntime 的 C API 库：Python 绑定 onnxruntime_pybind11_state.pyd 静态链接了运行时，
+    # 不导入它（实测收录 + OCR + 检索全程未加载）
+    "onnxruntime/capi/onnxruntime.dll",
+    # conda Library\bin 里被顺带收集、没有任何模块导入的 DLL（gio 只被自己的依赖链引用；
+    # archive/libxml2/liblz4 只给已排除的 libarchive 用）
+    "gio-2.0-0.dll", "gobject-2.0-0.dll", "gmodule-2.0-0.dll",
+    "archive.dll", "libxml2.dll", "liblz4.dll",
+    # Pillow：AVIF 不在支持格式里；ImageTk 依赖已排除的 tkinter；ImageCms 只在转 LAB 色彩空间时用
+    "PIL/_avif.*.pyd", "avif.dll", "PIL/_imagingtk.*.pyd",
+    "PIL/_imagingcms.*.pyd", "lcms2.dll",
+    # chromadb 的 SBOM 清单（运行时只读 METADATA 取版本号）
+    "chromadb-*.dist-info/sboms",
 ]
 
 

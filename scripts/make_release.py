@@ -120,6 +120,7 @@ def main():
                 skipped += 1
                 continue
             z.write(f, Path("知识库助理") / rel)
+        z.write(ROOT / "LICENSE", Path("知识库助理") / "LICENSE.txt")
         notices = ROOT / "THIRD_PARTY_NOTICES.txt"
         if notices.is_file():
             z.write(notices, Path("知识库助理") / notices.name)

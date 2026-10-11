@@ -62,6 +62,7 @@ Source: "{#DistDir}\main.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DistDir}\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#DistDir}\data\model_cache\*"; DestDir: "{app}\model_cache"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\THIRD_PARTY_NOTICES.txt"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 
 [InstallDelete]
 ; 升级时清掉旧版 _internal，避免残留旧依赖

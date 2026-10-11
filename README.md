@@ -12,7 +12,7 @@ Windows 安装包（约 166 MB，无需安装 Python，下载后双击安装）�
 
 **[⬇ 下载最新版（v0.1.5）](https://github.com/honeytidy/pda/releases/download/v0.1.5/pda-v0.1.5.exe)**　·　[更新说明](https://github.com/honeytidy/pda/releases/latest)　·　[查看所有版本](https://github.com/honeytidy/pda/releases)
 
-不想安装可用 **[便携版 zip（解压即用）](https://github.com/honeytidy/pda/releases/download/v0.1.5/pda-v0.1.5-portable.zip)**（约 226 MB）：解压到任意目录，双击 `pda.exe` 运行，数据保存在该目录的 `data\` 下；便携版不自动升级，新版需手动下载替换（保留 `data\` 即可）。
+不想安装可用 **[便携版 zip（解压即用）](https://github.com/honeytidy/pda/releases/download/v0.1.5/pda-v0.1.5-portable.zip)**（约 226 MB）：解压到任意目录，双击 `pda.exe` 运行，数据保存在该目录的 `data\` 下；便携版不自动升级，新版请解压到新目录，再把旧目录的 `data\` 整个拷过去（直接解压覆盖旧目录会留下旧版多余的依赖文件，不影响使用但占空间）。
 
 国内用户可从镜像下载（速度更快）：**[aitool.center/pda](https://aitool.center/pda/)**
 
@@ -135,3 +135,7 @@ dist/pda/
 ```
 
 默认 base_url 为 Moonshot（`https://api.moonshot.cn/v1`），默认模型 `kimi-k3`，任何 OpenAI 兼容接口均可。
+
+## 许可证
+
+本项目以 [MIT](LICENSE) 许可发布。发布包随附的第三方组件及其许可见 [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt)（由 `scripts/make_notices.py` 按 `dist/pda` 实际打包内容生成）。
