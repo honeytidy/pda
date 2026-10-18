@@ -92,7 +92,11 @@ def _client_toast(text: str, success: bool = False):
 
 
 def _run_add(paths) -> int:
-    from pda import ipc
+    from pda import config, ipc
+
+    if config.data_dir_unavailable():
+        _client_toast(f"知识库数据目录不可用：{config.DATA_DIR}\n请连接所在磁盘，或打开知识库助理处理")
+        return 1
 
     # 相对路径按本进程工作目录转成绝对路径（主程序工作目录与本进程不同）
     msg = {"paths": [os.path.abspath(str(p)) for p in paths]}
@@ -183,6 +187,105 @@ def _launch_main_minimized():
                      stderr=subprocess.DEVNULL)
 
 
+def _ensure_data_dir_available() -> bool:
+    """自定义数据目录不存在（移动硬盘没插、目录被删/改名）：不能悄悄新建一个空库。
+
+    让用户选：重试 / 改回默认位置 / 退出。返回 False 表示退出。
+    """
+    import ctypes
+
+    from pda import config
+
+    while config.data_dir_unavailable():
+        text = (f"找不到知识库数据目录：\n{config.DATA_DIR}\n\n"
+                "如果它在移动硬盘或其他磁盘上，请先连接后点\"重试\"。\n"
+                f"点\"忽略\"改用默认位置（{config.DEFAULT_DATA_DIR}，原目录里的数据不会被改动）；"
+                "点\"中止\"退出。")
+        # MB_ABORTRETRYIGNORE | MB_ICONWARNING | MB_TOPMOST
+        rc = ctypes.windll.user32.MessageBoxW(None, text, APP_TITLE, 0x2 | 0x30 | 0x40000)
+        if rc == 3:  # IDABORT
+            return False
+        if rc == 5:  # IDIGNORE
+            try:
+                config._update_config_file(data_dir=None, data_dir_move=None)
+            except Exception as e:
+                _native_message(f"无法修改配置：{e}")
+                return False
+            config.set_data_dir(config.DEFAULT_DATA_DIR)
+    return True
+
+
+def _run_pending_data_move():
+    """执行设置里安排的数据目录迁移（复制在后台线程，前台显示进度）。"""
+    from pda import config, datamove, ipc
+
+    if datamove.pending() is None:
+        return
+    import threading
+
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWidgets import QMessageBox, QProgressDialog
+
+    state = {"done": 0, "total": 0, "result": None}
+
+    def progress(done, total, _name):
+        state["done"], state["total"] = done, total
+
+    def work():
+        try:
+            state["result"] = datamove.run_pending(progress)
+        except Exception as e:  # run_pending 自己会兜底，这里只防万一
+            state["result"] = {"ok": False, "error": str(e)}
+
+    dlg = QProgressDialog("正在迁移知识库数据，请勿关闭…", None, 0, 1000)
+    dlg.setWindowTitle(APP_TITLE)
+    dlg.setMinimumDuration(0)
+    dlg.setAutoClose(False)
+    dlg.show()
+    loop = QEventLoop()
+    thread = threading.Thread(target=work, daemon=True)
+
+    def poll():
+        if state["total"]:
+            dlg.setValue(int(state["done"] * 1000 / state["total"]))
+            dlg.setLabelText("正在迁移知识库数据，请勿关闭…\n"
+                             f"{datamove.fmt_size(state['done'])} / {datamove.fmt_size(state['total'])}")
+        if not thread.is_alive():
+            loop.quit()
+
+    timer = QTimer()
+    timer.timeout.connect(poll)
+    thread.start()
+    timer.start(100)
+    loop.exec()
+    timer.stop()
+    dlg.close()
+
+    result = state["result"]
+    if not result:
+        return
+    if not result.get("ok"):
+        QMessageBox.warning(None, APP_TITLE,
+                            f"数据目录迁移失败，继续使用原来的位置：\n{config.DATA_DIR}\n\n{result.get('error', '')}")
+        return
+    # 单实例锁（互斥体名、锁文件）跟着数据目录走：改到新目录上
+    ipc.release_instance_lock()
+    ipc.acquire_instance_lock(wait_sec=5)
+    if result["mode"] == "switch":
+        QMessageBox.information(None, APP_TITLE, f"已切换到 {result['to']} 中的知识库。\n"
+                                f"原目录 {result['from']} 未改动。")
+        return
+    reply = QMessageBox.question(
+        None, APP_TITLE,
+        f"已迁移到：\n{result['to']}\n\n是否删除原目录以释放空间？\n{result['from']}",
+        QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+    )
+    if reply == QMessageBox.Yes:
+        err = datamove.remove_old(result["from"])
+        if err:
+            QMessageBox.warning(None, APP_TITLE, err)
+
+
 def main():
     from pda import ipc
 
@@ -202,6 +305,10 @@ def main():
         return _run_add(paths)
 
     minimized = "--minimized" in sys.argv
+    restarting = "--restart" in sys.argv  # 设置里迁移数据目录后自动重启：等旧进程退出再接手
+
+    if not _ensure_data_dir_available():
+        return 0
 
     # 无参二次启动：主程序已运行则激活它并退出。
     # 本进程是用户刚启动的前台进程，先授权他人抢前台，否则对方 activateWindow 只会闪任务栏
@@ -211,7 +318,11 @@ def main():
         ctypes.windll.user32.AllowSetForegroundWindow(-1)  # ASFW_ANY
     except Exception:
         pass
-    if minimized:
+    if restarting:
+        if not ipc.acquire_instance_lock(wait_sec=90):
+            _native_message("知识库助理重启超时：旧进程仍未退出，请稍后手动打开。")
+            return 0
+    elif minimized:
         # 开机自启 / 右键拉起：已有实例就什么都不做（不能把用户藏在托盘里的窗口弹出来）
         if not ipc.acquire_instance_lock():
             return 0
@@ -243,6 +354,9 @@ def main():
     from pda.ui.theme import app_font
 
     app.setFont(app_font())
+
+    # 设置里安排的数据目录迁移：打开 SQLite / chroma 之前执行
+    _run_pending_data_move()
 
     # 启动 splash：尽早出现（重依赖 import 在之后），--add/IPC 转发路径不经过这里；
     # 由原生启动器 pda.exe 拉起时（PDA_NO_INTERNAL_SPLASH=1）跳过——外部 splash 已显示；

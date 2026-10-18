@@ -96,6 +96,8 @@ def _try_file_lock():
     数据目录不可写等无法建锁的情况返回 True（不阻止启动，退化为只靠互斥体）。"""
     import msvcrt
 
+    if config.data_dir_unavailable():
+        return True  # 自定义数据目录不在（移动硬盘没插等）：不能 mkdir 出一个空库目录
     try:
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         f = open(_lock_path(), "a+b")
@@ -140,6 +142,21 @@ def acquire_instance_lock(wait_sec: float = 0.0) -> bool:
         break
     _kernel32.CloseHandle(handle)
     return False
+
+
+def release_instance_lock():
+    """释放单实例锁（数据目录迁移后改按新目录加锁 / 重启前让新进程能拿到锁）。"""
+    global _instance_mutex, _instance_lock_file
+    if _instance_lock_file is not None:
+        try:
+            _instance_lock_file.close()
+        except OSError:
+            pass
+        _instance_lock_file = None
+    if _instance_mutex is not None:
+        _kernel32.ReleaseMutex(_instance_mutex)
+        _kernel32.CloseHandle(_instance_mutex)
+        _instance_mutex = None
 
 
 def instance_running() -> bool:

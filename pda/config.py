@@ -48,21 +48,64 @@ if PORTABLE:
 else:
     APP_HOME = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "PDA"
 
-DATA_DIR = Path(os.environ.get("PDA_DATA_DIR", APP_HOME / "data"))
-FILES_DIR = DATA_DIR / "files"
-NOTES_DIR = DATA_DIR / "notes"
-DB_PATH = DATA_DIR / "pda.db"
-CHROMA_DIR = DATA_DIR / "chroma"
-
-_BUNDLED_MODEL_CACHE = PROJECT_ROOT / "model_cache"
-if not PORTABLE and "PDA_DATA_DIR" not in os.environ and _BUNDLED_MODEL_CACHE.is_dir():
-    MODEL_CACHE_DIR = _BUNDLED_MODEL_CACHE  # 安装版内置模型（per-user 安装目录，可写）
-else:
-    MODEL_CACHE_DIR = DATA_DIR / "model_cache"
-
-ERROR_LOG = DATA_DIR / "pda_error.log"
-
 CONFIG_PATH = Path(os.environ.get("PDA_CONFIG_PATH", APP_HOME / "pda_config.json"))
+
+DEFAULT_DATA_DIR = APP_HOME / "data"
+_BUNDLED_MODEL_CACHE = PROJECT_ROOT / "model_cache"
+
+
+def data_dir_from_env() -> bool:
+    """PDA_DATA_DIR 环境变量指定了数据目录：设置界面不能再改（改了也不生效）。"""
+    return "PDA_DATA_DIR" in os.environ
+
+
+def _configured_data_dir() -> str:
+    """pda_config.json 里的 data_dir（用户在设置里迁移到的自定义目录），没有则为 ""。
+
+    模块导入时就要用，不能走下面带缓存的 _read_config_file。
+    """
+    try:
+        value = json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig")).get("data_dir")
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if isinstance(value, str) and value.strip() and os.path.isabs(value.strip()):
+        return value.strip()
+    return ""
+
+
+def set_data_dir(path):
+    """切换数据目录（启动时解析一次；迁移数据目录时重新指向新位置）。
+
+    其他模块都按 config.XXX_DIR 现取，不缓存，所以改这里即全局生效。
+    """
+    global DATA_DIR, FILES_DIR, NOTES_DIR, DB_PATH, CHROMA_DIR, MODEL_CACHE_DIR, ERROR_LOG
+    DATA_DIR = Path(path)
+    FILES_DIR = DATA_DIR / "files"
+    NOTES_DIR = DATA_DIR / "notes"
+    DB_PATH = DATA_DIR / "pda.db"
+    CHROMA_DIR = DATA_DIR / "chroma"
+    if not PORTABLE and not data_dir_from_env() and _BUNDLED_MODEL_CACHE.is_dir():
+        MODEL_CACHE_DIR = _BUNDLED_MODEL_CACHE  # 安装版内置模型（per-user 安装目录，可写）
+    else:
+        MODEL_CACHE_DIR = DATA_DIR / "model_cache"
+    ERROR_LOG = DATA_DIR / "pda_error.log"
+
+
+if data_dir_from_env():
+    set_data_dir(os.environ["PDA_DATA_DIR"])
+else:
+    set_data_dir(_configured_data_dir() or DEFAULT_DATA_DIR)
+
+
+def custom_data_dir() -> str:
+    """当前生效的自定义数据目录；用的是默认位置（或环境变量）时返回 ""。"""
+    return "" if data_dir_from_env() else _configured_data_dir()
+
+
+def data_dir_unavailable() -> bool:
+    """自定义数据目录不存在（移动硬盘没插、目录被删/改名）：启动时要问用户，不能悄悄建个空库。"""
+    custom = custom_data_dir()
+    return bool(custom) and not os.path.isdir(custom)
 
 DEFAULT_BASE_URL = "https://api.moonshot.cn/v1"
 

@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .. import __version__, config, db, embeddings, hotkey, ingest, ipc, llm, qa, updater, web
+from .. import __version__, config, datamove, db, embeddings, hotkey, ingest, ipc, llm, qa, updater, web
 from ..watcher import FolderWatcher
 from . import markdown, theme
 from .toast import show_progress, show_toast
@@ -1403,9 +1403,24 @@ class MainWindow(QMainWindow):
             if dialog.exec() != QDialog.Accepted:
                 return
             self._save_settings(dialog)
+            if dialog.data_move:
+                self._schedule_data_move(dialog.data_move)
         finally:
             # 托盘常驻：每次打开都新建对话框，不释放会一直挂在主窗口下累积
             dialog.deleteLater()
+
+    def _schedule_data_move(self, plan: dict):
+        """记下待迁移，然后退出并拉起新进程：复制在新进程打开库之前进行（见 pda/datamove.py）。"""
+        if self._ingest_running or self._ingest_queue:
+            QMessageBox.information(self, "更改数据目录", "正在收录文档，请等收录完成后再更改数据目录。")
+            return
+        try:
+            datamove.schedule(plan["target"], plan["mode"])
+        except (config.ConfigError, OSError) as e:
+            QMessageBox.warning(self, "更改数据目录", f"无法保存迁移设置：{e}")
+            return
+        self._restart_after_quit = True
+        self._quit_app()
 
     def _save_settings(self, dialog):
         # 两项设置互相独立：一项失败不影响另一项，失败原因都要让用户看到
@@ -2125,6 +2140,27 @@ class MainWindow(QMainWindow):
             # 分片等待 + 处理事件：界面不卡死成"未响应"，worker 的 finished 信号也能被处理
             busy[0].wait(int(min(remaining, 0.2) * 1000))
             QApplication.processEvents()
+        if getattr(self, "_restart_after_quit", False):
+            # 迁移数据目录：新进程带 --restart，会等本进程释放单实例锁后再接手
+            self._spawn_restart()
+
+    @staticmethod
+    def _spawn_restart():
+        import subprocess
+        import sys
+
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--restart"]
+        else:
+            pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+            exe = pythonw if os.path.isfile(pythonw) else sys.executable
+            cmd = [exe, str(config.PROJECT_ROOT / "run.py"), "--restart"]
+        try:
+            subprocess.Popen(cmd, creationflags=0x00000008 | 0x00000200, close_fds=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+        except OSError:
+            pass  # 拉不起来：用户手动打开时照样会执行迁移
 
 
 class HotkeyForm(QWidget):
@@ -2261,6 +2297,7 @@ class WatchFoldersDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("设置")
         self.setMinimumSize(480, 640)
+        self.data_move = None  # 用户确认要迁移数据目录时为 datamove.check_target() 的结果
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
@@ -2305,6 +2342,42 @@ class WatchFoldersDialog(QDialog):
         update_row.addWidget(version_label)
         update_row.addWidget(check_now_btn)
         layout.addLayout(update_row)
+
+        # ---------- 数据目录：库、向量索引、归档原件、笔记都在这里，可迁移到非系统盘 ----------
+        data_title = QLabel("知识库数据目录（数据库、归档的原件和笔记都存放在这里）：")
+        data_title.setWordWrap(True)
+        data_title.setStyleSheet(f"color: {TEXT}; font-size: 12px; margin-top: 6px;")
+        layout.addWidget(data_title)
+        self.data_dir_label = QLabel(str(config.DATA_DIR))
+        self.data_dir_label.setWordWrap(True)
+        self.data_dir_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.data_dir_label.setStyleSheet(f"color: {SUBTLE}; font-size: 12px;")
+        self.data_dir_label.setAccessibleName("当前数据目录")
+        open_data_btn = QPushButton("打开")
+        open_data_btn.setAccessibleName("打开数据目录")
+        open_data_btn.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(config.DATA_DIR))))
+        self.move_data_btn = QPushButton("更改位置...")
+        self.move_data_btn.setAccessibleName("更改数据目录位置")
+        self.move_data_btn.clicked.connect(self._on_move_data_dir)
+        if config.data_dir_from_env():
+            self.move_data_btn.setEnabled(False)
+            self.move_data_btn.setToolTip("已用环境变量 PDA_DATA_DIR 指定数据目录")
+        data_row = QHBoxLayout()
+        data_row.setSpacing(8)
+        data_row.addWidget(self.data_dir_label, 1)
+        data_row.addWidget(open_data_btn)
+        data_row.addWidget(self.move_data_btn)
+        layout.addLayout(data_row)
+        if config.MODEL_CACHE_DIR == config.PROJECT_ROOT / "model_cache":
+            # 安装版：内置语义模型归安装程序管（升级覆盖、卸载删除），不随数据目录迁移
+            model_tip = QLabel(f"语义模型随程序安装在 {config.MODEL_CACHE_DIR}，不随数据迁移；"
+                               "如需移出系统盘，请先卸载（卸载时选择保留数据），"
+                               "再重新安装并选择其他安装位置。")
+            model_tip.setWordWrap(True)
+            model_tip.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            model_tip.setStyleSheet(f"color: {SUBTLE}; font-size: 12px;")
+            layout.addWidget(model_tip)
 
         # ---------- AI 问答：只填 Key，接口地址与模型自动确定 ----------
         llm_title = QLabel("AI 问答（可选；不填则只返回检索到的原文片段）：")
@@ -2442,6 +2515,28 @@ class WatchFoldersDialog(QDialog):
     def _on_remove(self):
         for item in self.list.selectedItems():
             self.list.takeItem(self.list.row(item))
+
+    def _on_move_data_dir(self):
+        """选新位置 → 校验 → 确认 → 交给主窗口安排迁移并重启（复制在下次启动、打开库之前进行）。"""
+        chosen = QFileDialog.getExistingDirectory(self, "选择知识库数据的新位置（建议选非系统盘）")
+        if not chosen:
+            return
+        try:
+            plan = datamove.check_target(os.path.normpath(chosen))
+        except datamove.MoveError as e:
+            QMessageBox.warning(self, "无法使用该位置", str(e))
+            return
+        target = plan["target"]
+        if plan["mode"] == "switch":
+            text = (f"{target}\n里已有一个知识库。\n\n切换过去使用它吗？当前目录里的数据不会被复制或删除：\n"
+                    f"{config.DATA_DIR}")
+        else:
+            text = (f"把知识库数据（约 {datamove.fmt_size(plan.get('size', 0))}）迁移到：\n{target}\n\n"
+                    "程序会自动重启并完成复制，期间请勿关闭。迁移成功后可选择是否删除原目录。")
+        if QMessageBox.question(self, "更改数据目录", text + "\n\n未保存的其他设置会先保存。") != QMessageBox.Yes:
+            return
+        self.data_move = plan
+        self.accept()
 
     def folders(self) -> list:
         return [self.list.item(i).text() for i in range(self.list.count())]

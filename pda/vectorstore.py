@@ -32,6 +32,21 @@ def _get_client():
         return _client
 
 
+def reset_client():
+    """丢掉已打开的客户端（数据目录切换后下次按新路径重新打开）。"""
+    global _client, _collection
+    with _client_lock:
+        if _client is not None:
+            try:
+                from chromadb.api.shared_system_client import SharedSystemClient
+
+                SharedSystemClient.clear_system_cache()  # 同一路径的客户端是进程内共享缓存的
+            except Exception:
+                pass
+        _client = None
+        _collection = None
+
+
 def get_collection():
     global _collection
     if _collection is None:
