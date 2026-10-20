@@ -663,6 +663,9 @@ class SelectionWorker(QThread):
             self.done.emit(f"读取资源管理器选中项失败：{type(e).__name__}: {e}")
 
 
+# 气泡宽度估算值取它表示"占满可用宽度"（助理回答）
+_FILL_WIDTH = 1 << 20
+
 def _alive(obj) -> bool:
     """Qt 对象的 C++ 端是否还在（deleteLater 之后 Python 包装仍可能被引用）。"""
     try:
@@ -1149,7 +1152,9 @@ class MainWindow(QMainWindow):
 
     # ---------- 消息渲染 ----------
 
-    def _make_bubble_label(self, text, is_markdown=False):
+    def _make_bubble_label(self, text, is_markdown=False, fill=False):
+        """fill=True（助理回答）：气泡占满可用宽度，不按文字宽度收窄——短回答下面的出处
+        列表、带缩进的列表都会被挤成窄条。"""
         if is_markdown:
             # LLM 回答：Qt 自带解析器渲染 Markdown（原始 HTML/图片/非 http 链接已在 render 里屏蔽）
             html, natural_w = markdown.render(text, font_px=theme.BODY_PX, link_color=ACCENT)
@@ -1171,12 +1176,15 @@ class MainWindow(QMainWindow):
             font.setPixelSize(theme.BODY_PX)
             fm = QFontMetrics(font)
             est = max((fm.horizontalAdvance(line) for line in text.split("\n")), default=0) + 10
+        if fill:
+            est = _FILL_WIDTH
         self._bubble_labels.append((label, est))
         self._fit_bubble_label(label, est)
         return label
 
     def _fit_bubble_label(self, label, est):
-        max_w = int(self.scroll.viewport().width() * 0.82)
+        ratio = 0.92 if est >= _FILL_WIDTH else 0.82
+        max_w = int(self.scroll.viewport().width() * ratio)
         if max_w <= 0:
             return
         label.setFixedWidth(min(est, max_w))
@@ -1220,7 +1228,7 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(bubble)
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
-        layout.addWidget(self._make_bubble_label(text, is_markdown))
+        layout.addWidget(self._make_bubble_label(text, is_markdown, fill=True))
         if sources:
             sep = QFrame()
             sep.setFrameShape(QFrame.HLine)
@@ -1627,7 +1635,7 @@ class MainWindow(QMainWindow):
             bubble.setAccessibleName("助理正在回答")
             layout = QVBoxLayout(bubble)
             layout.setContentsMargins(10, 8, 10, 8)
-            self._stream_label = self._make_bubble_label(text, is_markdown=True)
+            self._stream_label = self._make_bubble_label(text, is_markdown=True, fill=True)
             layout.addWidget(self._stream_label)
             self._stream_bubble = bubble
             self._add_row(bubble, "left")
@@ -1639,11 +1647,8 @@ class MainWindow(QMainWindow):
         label = self._stream_label
         if label is None or not _alive(label):
             return
-        html, natural_w = markdown.render(self._stream_text, font_px=theme.BODY_PX, link_color=ACCENT)
-        label.setText(html)
-        est = int(natural_w) + 10
-        self._bubble_labels = [(lb, est if lb is label else e) for lb, e in self._bubble_labels]
-        self._fit_bubble_label(label, est)
+        html, _ = markdown.render(self._stream_text, font_px=theme.BODY_PX, link_color=ACCENT)
+        label.setText(html)  # 流式气泡一开始就占满宽度，不随内容变宽
         bar = self.scroll.verticalScrollBar()
         if bar.maximum() - bar.value() < 80:  # 用户没往上翻时才跟随到底部
             self._scroll_to_bottom()
