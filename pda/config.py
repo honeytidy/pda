@@ -340,6 +340,21 @@ def auto_tags_enabled() -> bool:
     return _parse_bool(_read_config_file().get("auto_tags", True), default=True)
 
 
+def vision_ingest_enabled() -> bool:
+    """收录图片时是否上传给视觉模型转写（pda_config.json 的 vision_ingest，默认关：会上传整张图片）。"""
+    return _parse_bool(_read_config_file().get("vision_ingest", False), default=False)
+
+
+def vision_model() -> str:
+    """手工指定的视觉模型（pda_config.json 的 vision_model）；空 = 自动选。"""
+    value = _read_config_file().get("vision_model")
+    return value.strip() if isinstance(value, str) else ""
+
+
+def save_vision_ingest(enabled: bool):
+    _update_config_file(vision_ingest=bool(enabled))
+
+
 def update_check_enabled() -> bool:
     """启动后是否自动检查新版本（pda_config.json 的 update_check，默认开）。"""
     return _parse_bool(_read_config_file().get("update_check", True), default=True)

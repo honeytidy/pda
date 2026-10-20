@@ -118,8 +118,10 @@ def ingest_file(path: str) -> dict:
       （含 chunks/FTS/向量/归档文件）；新版本失败时旧版本保留（replaced=True）
     任一步失败都会回滚本次写入（SQLite 事务 + 删除本次向量与归档），下次可重新收录。
     """
+    # 图片先试视觉模型转写（保留表格/日历结构），放在锁外：一次调用要十几秒到一分钟
+    image_text = _describe_image_unlocked(path)
     with _INGEST_LOCK:
-        result = _ingest_file_locked(path)
+        result = _ingest_file_locked(path, image_text)
     # AI 自动标签放在锁外：断网时每个文件最多要等几十秒超时，持锁会让整批入库
     # 以及热键/监控/IPC 等所有入口一起排队
     tag_text = result.pop("_tag_text", None)
@@ -135,7 +137,27 @@ def ingest_file(path: str) -> dict:
     return result
 
 
-def _ingest_file_locked(path: str) -> dict:
+def _describe_image_unlocked(path: str) -> str | None:
+    """开启了图片 AI 识别时用视觉模型转写图片；未开启 / 未变化 / 失败返回 None（走 OCR）。"""
+    if Path(path).suffix.lower() not in parsers.IMAGE_EXTS or not config.vision_ingest_enabled():
+        return None
+    if not llm.has_llm() or _is_inside_data_dir(path):
+        return None
+    try:
+        existing = db.find_document_by_source(normalize_source(path))
+        if (existing and not existing.get("archived_only")
+                and abs(existing["source_mtime"] - os.path.getmtime(path)) < 1e-6
+                and existing["source_size"] == os.path.getsize(path)):
+            return None  # 没变化会被跳过，不必花一次调用
+        return llm.describe_image(path)
+    except llm.VisionUnavailable as e:
+        _log.info("图片 AI 识别不可用，改用 OCR：%s", e)
+    except Exception:
+        _log.warning("图片 AI 识别失败，改用 OCR", exc_info=True)
+    return None
+
+
+def _ingest_file_locked(path: str, image_text: str | None = None) -> dict:
     title = os.path.basename(path)
     if _is_inside_data_dir(path):
         return {"ok": True, "title": title, "skipped": True}
@@ -152,7 +174,7 @@ def _ingest_file_locked(path: str) -> dict:
 
     archived_only = False
     try:
-        text = parsers.extract_text(path)
+        text = image_text or parsers.extract_text(path)
     except parsers.ParseError as e:
         # 二进制 / 扫描件 / 空文档 / 图片无文字：归档原件，按文件名建索引（可检索到、可打开原件）
         reason = "未能提取文本内容" if isinstance(e, parsers.BinaryFileError) else str(e)

@@ -4,6 +4,7 @@
 V1.2：限定范围提问——"在XX里/只看XX"之类限定词先按文档标题/标签模糊匹配
 过滤候选文档再检索；匹配不到则全库检索并在答案中提示。
 """
+import datetime
 import logging
 import re
 
@@ -16,8 +17,17 @@ _SYSTEM_PROMPT = (
     "要求：\n"
     "1. 用中文简洁回答；\n"
     "2. 回答中引用资料时用 [1]、[2] 这样的编号标注出处；\n"
-    "3. 资料中没有的信息不要编造，直接说明资料中未提及。"
+    "3. 资料中没有的信息不要编造，直接说明资料中未提及。\n"
+    "4. 问题涉及今天/现在/本周/还有几天等相对时间时，以下面给出的当前日期为准推算。"
 )
+
+_WEEKDAYS = "一二三四五六日"
+
+
+def _today_line(today=None) -> str:
+    """当前日期（模型自己不知道今天是哪天，问"现在是第几周"之类全靠它）。"""
+    today = today or datetime.date.today()
+    return f"当前日期：{today.year}年{today.month}月{today.day}日，星期{_WEEKDAYS[today.weekday()]}。"
 
 # 限定词模式："在XX里/中/内"、"只看XX"、"《XX》"
 # 普通英文/中文引号不再当限定词（问题里引用一个词很常见，会误把检索范围缩小）
@@ -162,7 +172,7 @@ def answer(query: str, on_delta=None) -> dict:
         f"[{s['index']}]（来源：{s['title']}）\n{s['text']}" for s in sources
     )
     messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _SYSTEM_PROMPT + "\n\n" + _today_line()},
         {
             "role": "user",
             "content": f"资料片段：\n{context}\n\n用户问题：{query}",

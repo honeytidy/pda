@@ -1446,6 +1446,11 @@ class MainWindow(QMainWindow):
                 config.save_update_prefs(enabled=dialog.update_check_checked())
             except (config.ConfigError, OSError) as e:
                 errors.append(f"自动检查更新设置未保存：{e}")
+        if dialog.vision_checked() != config.vision_ingest_enabled():
+            try:
+                config.save_vision_ingest(dialog.vision_checked())
+            except (config.ConfigError, OSError) as e:
+                errors.append(f"图片 AI 识别设置未保存：{e}")
         llm_values = dialog.llm_values()
         old_llm = config.get_llm_file_config()
         if llm_values["api_key"] is None:  # AI 设置没改：沿用已保存的值，只可能改了自动标签开关
@@ -2474,6 +2479,10 @@ class WatchFoldersDialog(QDialog):
         self.auto_tags_cb.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
         self.auto_tags_cb.setChecked(config.auto_tags_enabled())
         layout.addWidget(self.auto_tags_cb)
+        self.vision_cb = QCheckBox("收录图片时用 AI 识别表格/日历等结构（会上传整张图片，失败时改用本地 OCR）")
+        self.vision_cb.setStyleSheet(f"color: {TEXT}; font-size: 12px;")
+        self.vision_cb.setChecked(config.vision_ingest_enabled())
+        layout.addWidget(self.vision_cb)
         overrides = config.llm_env_overrides()
         if overrides:
             env_tip = QLabel(f"注意：已设置环境变量 {', '.join(overrides)}，对应项以环境变量为准。")
@@ -2790,6 +2799,9 @@ class WatchFoldersDialog(QDialog):
                                            "model_auto": None})
         values["auto_tags"] = self.auto_tags_cb.isChecked()
         return values
+
+    def vision_checked(self) -> bool:
+        return self.vision_cb.isChecked()
 
 
 class _ModelsWorker(QThread):

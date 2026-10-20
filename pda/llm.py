@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """可插拔 LLM：OpenAI 兼容客户端。无 key 时 has_llm() = False。"""
 import logging
+import os
 import re
 import threading
 import time
@@ -378,6 +379,162 @@ def _chat_with(cfg: dict, model: str, messages: list, temperature: float, timeou
                 kwargs.pop("extra_body")
             else:
                 raise
+
+
+# ---------- 图片转写（视觉模型） ----------
+# OCR 只给出零散文字，表格/日历的行列关系丢了（"校历第几周"答不出）。开启 vision_ingest 后
+# 收录图片时把整张图发给视觉模型转写成结构化文字，失败由调用方退回 OCR。
+_VISION_TIMEOUT = 180.0  # 流式下是两段输出之间的读超时；kimi-k3 转写一张校历全程约 1 分钟
+_VISION_MAX_SIDE = 2048  # 长边超过就缩小：省流量，各家视觉接口也有像素上限
+_VISION_MARKERS = ("-vl", "vl-", "vision", "4v", "5v")
+_VISION_SKIP = ("ocr", "embed")  # qwen-vl-ocr 之类只出纯文字，不还原结构
+# 该服务商没有 /models 或列表里挑不出视觉模型时按顺序试；
+# vision_main=True 表示主对话模型本身支持看图，最后用它试
+_PROVIDER_VISION = {
+    "dashscope": {"models": ["qwen-vl-max", "qwen-vl-plus"]},
+    "zhipu": {"models": ["glm-4v-plus", "glm-4v-flash"]},
+    "siliconflow": {"models": ["Qwen/Qwen2.5-VL-72B-Instruct"]},
+    "moonshot": {"models": [], "vision_main": True},
+    "openai": {"models": [], "vision_main": True},
+    "openrouter": {"models": [], "vision_main": True},
+    "anthropic": {"models": [], "vision_main": True},
+}
+_VISION_PROMPT = (
+    "把这张图片的内容转写成文字，用于个人知识库检索和问答。要求：\n"
+    "1. 先用一句话说明这是什么图片（标题/主题）；\n"
+    "2. 保留图中有意义的文字、数字、日期，不要评论；\n"
+    "3. 日历、校历、课表、排班表等：不要照抄日期网格，改为逐条列出“第N周：起始日期～结束日期”"
+    "（写全年月日），再列出图中标注的开学、放假、考试、节假日、调休等安排及其日期；\n"
+    "4. 其他表格转成 Markdown 表格，空单元格不要输出成一长串空列。"
+)
+# 视觉模型偶尔会陷入重复输出（实测 kimi-k3 连续输出几万个空表格单元格）：超长或尾部
+# 只剩重复字符时中止，保留之前的有效内容
+_VISION_MAX_CHARS = 12000
+
+
+class _VisionRunaway(Exception):
+    def __init__(self, text: str):
+        super().__init__("视觉模型输出失控")
+        self.text = text
+
+
+def _vision_guard(text: str):
+    tail = text[-600:]
+    if len(text) > _VISION_MAX_CHARS or (len(tail) == 600 and len(set(tail) - set(" \n\t")) <= 3):
+        raise _VisionRunaway(text)
+
+
+def _trim_runaway(text: str) -> str:
+    """去掉尾部重复的垃圾行（只剩 | - 空格之类的行）。"""
+    lines = text.splitlines()
+    while lines and len(set(lines[-1]) - set(" |-:\t")) == 0:
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
+_VISION_OFFLINE_BACKOFF = 300.0
+_vision_offline_until = 0.0
+
+
+class VisionUnavailable(Exception):
+    """没有可用的视觉模型 / 调用失败（调用方退回 OCR）。"""
+
+
+def _is_vision_model(model_id: str) -> bool:
+    low = model_id.lower()
+    return any(m in low for m in _VISION_MARKERS) and not any(m in low for m in _VISION_SKIP)
+
+
+def _vision_candidates(cfg: dict) -> list:
+    override = config.vision_model()
+    if override:
+        return [override]
+    preset = _PROVIDER_VISION.get(provider_for_base_url(cfg["base_url"]) or "", {})
+    # 主模型本身能看图（kimi-k3 等）：优先用它，列表里的老 vision-preview 模型只作备选
+    cands = [_resolve_model(cfg)] if preset.get("vision_main") else []
+    try:
+        models = _list_models(_get_client(cfg).with_options(timeout=12.0))
+        cands += [i for i, _ in _newest_first([m for m in models if _is_vision_model(m[0])])][:2]
+    except Exception:
+        _log.info("获取模型列表失败，视觉模型用预设", exc_info=True)
+    cands += preset.get("models", [])
+    if not preset:
+        cands.append(_resolve_model(cfg))  # 自定义接口：不知道主模型能不能看图，试一下
+    return list(dict.fromkeys(c for c in cands if c))
+
+
+def _image_data_url(path: str) -> str:
+    import base64
+    import io
+
+    mime = "image/png"
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            im.load()
+            fmt = (im.format or "").upper()
+            if max(im.size) > _VISION_MAX_SIDE or fmt not in ("PNG", "JPEG"):
+                im = im.convert("RGB") if im.mode not in ("RGB", "L") else im
+                im.thumbnail((_VISION_MAX_SIDE, _VISION_MAX_SIDE))
+                buf = io.BytesIO()
+                im.save(buf, "PNG")
+                data = buf.getvalue()
+            else:
+                mime = "image/jpeg" if fmt == "JPEG" else "image/png"
+                with open(path, "rb") as f:
+                    data = f.read()
+    except ImportError:
+        ext = os.path.splitext(path)[1].lower()
+        mime = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+                ".bmp": "image/bmp"}.get(ext, "image/png")
+        with open(path, "rb") as f:
+            data = f.read()
+    return f"data:{mime};base64," + base64.b64encode(data).decode("ascii")
+
+
+def describe_image(path: str) -> str:
+    """用视觉模型把图片转写成结构化文字。没开启 / 无 Key / 无可用模型 / 失败都抛 VisionUnavailable。"""
+    global _vision_offline_until
+    import openai
+
+    if not has_llm() or not config.vision_ingest_enabled():
+        raise VisionUnavailable("未开启图片 AI 识别")
+    if time.monotonic() < _vision_offline_until:
+        raise VisionUnavailable("连不上服务商（稍后重试）")
+    cfg = config.get_llm_config()
+    try:
+        url = _image_data_url(path)
+    except Exception as e:
+        raise VisionUnavailable(f"读取图片失败：{e}") from e
+    messages = [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": url}},
+        {"type": "text", "text": _VISION_PROMPT},
+    ]}]
+    last = None
+    for model in _vision_candidates(cfg):
+        try:
+            # 流式：整张表转写要一分多钟，非流式请求会在服务端出完全部内容前读超时
+            text = _chat_with(cfg, model, messages, 0.1, _VISION_TIMEOUT,
+                              on_delta=_vision_guard).strip()
+        except _VisionRunaway as e:
+            _log.warning("视觉模型 %s 输出失控（%d 字），截断保留前面的内容", model, len(e.text))
+            text = _trim_runaway(e.text)
+            if len(text) < 50:
+                raise VisionUnavailable("视觉模型输出异常") from e
+        except (openai.APITimeoutError, openai.APIConnectionError) as e:
+            _vision_offline_until = time.monotonic() + _VISION_OFFLINE_BACKOFF
+            raise VisionUnavailable("连不上服务商") from e
+        except (openai.NotFoundError, openai.BadRequestError, openai.PermissionDeniedError) as e:
+            # 模型不存在 / 不支持图片输入：换下一个候选
+            _log.info("视觉模型 %s 不可用：%s", model, e)
+            last = e
+            continue
+        except Exception as e:
+            raise VisionUnavailable(f"图片识别失败：{e}") from e
+        if text:
+            return text
+    raise VisionUnavailable(f"没有可用的视觉模型{f'（{last}）' if last else ''}")
 
 
 def generate_tags(text: str) -> list:

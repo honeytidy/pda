@@ -22,7 +22,7 @@ Windows 安装包（约 166 MB，无需安装 Python，下载后双击安装）�
 
 支持格式：**不限制文件类型**。
 
-- txt / md / pdf / docx / xlsx / xlsm / xls / pptx / 图片（png / jpg / jpeg / bmp / webp，OCR 提取文字）会深度解析全文；
+- txt / md / pdf / docx / xlsx / xlsm / xls / pptx / 图片（png / jpg / jpeg / bmp / webp，OCR 提取文字；设置里可开启 AI 识别，保留校历、表格等结构）会深度解析全文；
 - 未知扩展名按纯文本尝试；
 - 提取不出文字的二进制文件（如 exe、zip、psd）也会归档原件并按文件名建索引，可检索到、可从出处打开原件。
 

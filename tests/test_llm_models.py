@@ -209,3 +209,117 @@ def test_answer_streams_with_scope_prefix(monkeypatch):
     assert result["markdown"] and result["answer"].endswith("十月二十号")
     assert seen[-1] == result["answer"]          # 流式文本与最终答案一致（含范围提示前缀）
     assert seen[0].startswith("（未找到匹配")
+
+
+def test_system_prompt_has_today():
+    import datetime
+
+    from pda import qa
+
+    assert qa._today_line(datetime.date(2026, 10, 20)) == "当前日期：2026年10月20日，星期二。"
+
+
+def test_vision_model_detection():
+    from pda import llm
+
+    assert llm._is_vision_model("qwen-vl-max")
+    assert llm._is_vision_model("glm-4v-plus")
+    assert llm._is_vision_model("Qwen/Qwen2.5-VL-72B-Instruct")
+    assert not llm._is_vision_model("qwen-vl-ocr")
+    assert not llm._is_vision_model("qwen-plus")
+
+
+def test_describe_image_falls_through_candidates(monkeypatch, tmp_path):
+    import openai
+
+    from pda import config, llm
+
+    img = tmp_path / "a.png"
+    img.write_bytes(b"\x89PNG fake")
+    monkeypatch.setattr(llm, "has_llm", lambda: True)
+    monkeypatch.setattr(config, "vision_ingest_enabled", lambda: True)
+    monkeypatch.setattr(config, "get_llm_config", lambda: dict(_KIMI, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"))
+    monkeypatch.setattr(llm, "_vision_candidates", lambda cfg: ["bad-vl", "qwen-vl-max"])
+    monkeypatch.setattr(llm, "_image_data_url", lambda p: "data:image/png;base64,AA==")
+    monkeypatch.setattr(llm, "_vision_offline_until", 0.0)
+    tried = []
+
+    def fake_chat_with(cfg, model, messages, t, timeout, on_delta=None):
+        tried.append(model)
+        assert on_delta is not None  # 走流式
+        assert messages[0]["content"][0]["type"] == "image_url"
+        if model == "bad-vl":
+            raise openai.NotFoundError("no", response=types.SimpleNamespace(
+                status_code=404, request=None, headers={}), body=None)
+        return "| 周次 | 日期 |\n| 8 | 10/19-10/25 |"
+
+    monkeypatch.setattr(llm, "_chat_with", fake_chat_with)
+    assert "10/19" in llm.describe_image(str(img))
+    assert tried == ["bad-vl", "qwen-vl-max"]
+
+    monkeypatch.setattr(config, "vision_ingest_enabled", lambda: False)
+    with pytest.raises(llm.VisionUnavailable):
+        llm.describe_image(str(img))
+
+
+def test_ingest_image_prefers_vision_text(store, monkeypatch, tmp_path):
+    from pda import config, db, ingest, llm, parsers
+
+    img = tmp_path / "校历.png"
+    img.write_bytes(b"\x89PNG fake")
+    monkeypatch.setattr(config, "vision_ingest_enabled", lambda: True)
+    monkeypatch.setattr(llm, "has_llm", lambda: True)
+    monkeypatch.setattr(llm, "generate_tags", lambda text: [])
+    monkeypatch.setattr(llm, "describe_image", lambda p: "校历：第8周 2026-10-19 至 10-25")
+    monkeypatch.setattr(parsers, "_read_image_ocr", lambda p: pytest.fail("不应走 OCR"))
+    r = ingest.ingest_file(str(img))
+    assert r["ok"] and not r.get("archived_only")
+    with db.connect() as conn:
+        texts = [r[0] for r in conn.execute("SELECT text FROM chunks WHERE doc_id=?", (r["doc_id"],))]
+    assert any("第8周" in t for t in texts)
+
+    # 视觉不可用：退回 OCR
+    img2 = tmp_path / "b.png"
+    img2.write_bytes(b"\x89PNG fake2")
+
+    def unavailable(p):
+        raise llm.VisionUnavailable("x")
+
+    monkeypatch.setattr(llm, "describe_image", unavailable)
+    monkeypatch.setattr(parsers, "_read_image_ocr", lambda p: "OCR文字")
+    assert ingest.ingest_file(str(img2))["ok"]
+
+
+def test_vision_candidates_kimi_uses_main_model_first(monkeypatch):
+    from pda import config, llm
+
+    monkeypatch.setattr(config, "vision_model", lambda: "")
+    monkeypatch.setattr(llm, "_resolve_model", lambda cfg, refresh=False: "kimi-k3")
+    monkeypatch.setattr(llm, "_list_models", lambda c: [("kimi-k3", 0), ("moonshot-v1-8k-vision-preview", 0)])
+    monkeypatch.setattr(llm, "_get_client", lambda cfg: types.SimpleNamespace(with_options=lambda **k: None))
+    assert llm._vision_candidates(_KIMI) == ["kimi-k3", "moonshot-v1-8k-vision-preview"]
+
+
+def test_vision_runaway_is_cut(monkeypatch, tmp_path):
+    from pda import config, llm
+
+    img = tmp_path / "a.png"
+    img.write_bytes(b"x")
+    monkeypatch.setattr(llm, "has_llm", lambda: True)
+    monkeypatch.setattr(config, "vision_ingest_enabled", lambda: True)
+    monkeypatch.setattr(config, "get_llm_config", lambda: _KIMI)
+    monkeypatch.setattr(llm, "_vision_candidates", lambda cfg: ["kimi-k3"])
+    monkeypatch.setattr(llm, "_image_data_url", lambda p: "data:image/png;base64,AA==")
+    monkeypatch.setattr(llm, "_vision_offline_until", 0.0)
+
+    def runaway(cfg, model, messages, t, timeout, on_delta=None):
+        text = ("校历\n第7周：2026年10月12日～10月18日\n第8周：2026年10月19日～10月25日\n"
+                "第9周：2026年10月26日～11月1日\n| a | b |\n")
+        for _ in range(5000):
+            text += "|  "
+            on_delta(text)
+        return text
+
+    monkeypatch.setattr(llm, "_chat_with", runaway)
+    out = llm.describe_image(str(img))
+    assert out.endswith("| a | b |") and "第8周" in out
